@@ -21,6 +21,7 @@ var bag_btn: Button
 var bag_menu: Control
 var death_menu: Control
 var toast: Label
+var bag_info: Label
 var use_btns := []
 
 
@@ -174,6 +175,10 @@ func _build_ui() -> void:
 
     var bag_box := _make_menu(root, "BAG", Color(0, 0, 0, 0.55))
     bag_menu = bag_box.get_meta("menu")
+    bag_info = Label.new()
+    bag_info.add_theme_font_size_override("font_size", 34)
+    bag_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    bag_box.add_child(bag_info)
     for i in 3:
         var b := _button("", 34)
         b.custom_minimum_size = Vector2(760, 80)
@@ -257,26 +262,8 @@ func _on_pick() -> void:
     _refresh_bag()
 
 
-func _use(kind: int) -> void:
-    if counts[kind] <= 0:
-        return
-    counts[kind] -= 1
-    match kind:
-        0:
-            water = minf(water + 35.0, 100.0)
-        1:
-            food = minf(food + 35.0, 100.0)
-        2:
-            var h: float = main_node.get("health")
-            main_node.set("health", minf(h + 40.0, 100.0))
-    _refresh_bag()
 
 
-func _refresh_bag() -> void:
-    for i in 3:
-        var b: Button = use_btns[i]
-        b.text = VERBS[i] + " " + NAMES[i] + "  (x" + str(counts[i]) + ")"
-        b.disabled = counts[i] <= 0
 
 
 func _reset_main_input() -> void:
@@ -302,3 +289,49 @@ func _close_bag() -> void:
 func _restart() -> void:
     get_tree().paused = false
     get_tree().reload_current_scene()
+
+
+func _bars_now() -> void:
+    water_bar.size.x = 500.0 * water / 100.0
+    food_bar.size.x = 500.0 * food / 100.0
+
+
+func _use(kind: int) -> void:
+    if counts[kind] <= 0:
+        return
+    var health: float = main_node.get("health")
+    var msg := ""
+    match kind:
+        0:
+            if water >= 99.0:
+                msg = "Water already full"
+            else:
+                water = minf(water + 35.0, 100.0)
+                msg = "Water +35"
+        1:
+            if food >= 99.0:
+                msg = "Food already full"
+            else:
+                food = minf(food + 35.0, 100.0)
+                msg = "Food +35"
+        2:
+            if health >= 99.0:
+                msg = "Health already full"
+            else:
+                main_node.set("health", minf(health + 40.0, 100.0))
+                msg = "Health +40"
+    if not msg.contains("already"):
+        counts[kind] -= 1
+    _bars_now()
+    _refresh_bag(msg)
+
+
+func _refresh_bag(msg: String = "") -> void:
+    for i in 3:
+        var b: Button = use_btns[i]
+        b.text = VERBS[i] + " " + NAMES[i] + "  (x" + str(counts[i]) + ")"
+        b.disabled = counts[i] <= 0
+    var h: float = main_node.get("health")
+    bag_info.text = "Health %d%%   Water %d%%   Food %d%%" % [int(h), int(water), int(food)]
+    if msg != "":
+        bag_info.text += "\n" + msg

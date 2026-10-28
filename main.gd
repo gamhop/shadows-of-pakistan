@@ -1,19 +1,21 @@
 extends Node3D
 
-const WALK_SPEED := 5.0
-const RUN_SPEED := 8.5
+const WALK_SPEED := 4.5
+const RUN_SPEED := 9.5
 const GRAVITY := 20.0
 const STICK_RADIUS := 170.0
 const RUN_RADIUS := 110.0
 
 var player: CharacterBody3D
-var ground: StaticBody3D
+&
+var cam: Camera3D
 var cam_pivot: Node3D
 var ui: Control
 var stick := Vector2.ZERO
 var stick_touch := -1
 var look_touch := -1
 var run_touch := -1
+var run_on := false
 var cam_yaw := 0.0
 var cam_pitch := -0.12
 var health := 100.0
@@ -54,9 +56,11 @@ func _make_world() -> void:
     add_child(we)
 
     var sun := DirectionalLight3D.new()
-    sun.rotation_degrees = Vector3(-50, -30, 0)
+    sun.rotation_degrees = Vector3(-68, -30, 0)
     sun.light_color = Color(1.0, 0.95, 0.85)
     sun.shadow_enabled = true
+    sun.shadow_bias = 0.03
+    sun.shadow_normal_bias = 1.0
     sun.directional_shadow_max_distance = 40.0
     add_child(sun)
 
@@ -123,7 +127,7 @@ func _make_player() -> void:
 
     cam_pivot = Node3D.new()
     add_child(cam_pivot)
-    var cam := Camera3D.new()
+    cam = Camera3D.new()
     cam.fov = 60.0
     cam.far = 400.0
     var arm := SpringArm3D.new()
@@ -141,9 +145,11 @@ func _physics_process(delta: float) -> void:
     cam_pivot.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
     var dir := Vector3(stick.x, 0.0, stick.y).rotated(Vector3.UP, cam_yaw)
     var moving := dir.length() > 0.1
-    var running := run_touch != -1 and moving and not exhausted
+    if not moving:
+        run_on = false
+    var running := run_on and moving and not exhausted
     if running:
-        stamina = maxf(stamina - 25.0 * delta, 0.0)
+        stamina = maxf(stamina - 18.0 * delta, 0.0)
         if stamina <= 0.0:
             exhausted = true
     else:
@@ -151,6 +157,7 @@ func _physics_process(delta: float) -> void:
         if exhausted and stamina >= 20.0:
             exhausted = false
     var speed := RUN_SPEED if running else WALK_SPEED
+    cam.fov = lerpf(cam.fov, 70.0 if running else 60.0, 6.0 * delta)
     player.velocity.x = dir.x * speed
     player.velocity.z = dir.z * speed
     if player.is_on_floor():
@@ -196,7 +203,7 @@ func _draw_ui() -> void:
     ui.draw_circle(c + stick * STICK_RADIUS, 70.0, Color(1, 1, 1, 0.5))
 
     var r := _run_base()
-    var rcol := Color(1, 0.6, 0.2, 0.55) if run_touch != -1 else Color(1, 1, 1, 0.2)
+    var rcol := Color(1, 0.6, 0.2, 0.55) if run_on else Color(1, 1, 1, 0.2)
     ui.draw_circle(r, RUN_RADIUS, rcol)
     ui.draw_string(ThemeDB.fallback_font, r + Vector2(-100, 16), "RUN", HORIZONTAL_ALIGNMENT_CENTER, 200, 48)
 
@@ -216,7 +223,7 @@ func _input(event: InputEvent) -> void:
                 stick_touch = t.index
                 _update_stick(t.position)
             elif run_touch == -1 and t.position.distance_to(_run_base()) < RUN_RADIUS * 1.4:
-                run_touch = t.index
+                run_on = not run_on
             elif look_touch == -1 and t.position.x > vp.x * 0.4:
                 look_touch = t.index
         else:
