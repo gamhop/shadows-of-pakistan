@@ -25,6 +25,7 @@ func _ready() -> void:
     _make_world()
     _make_player()
     add_child(preload("res://street.gd").new())
+    add_child(preload("res://survival.gd").new())
     _make_ui()
     add_child(preload("res://settings_menu.gd").new())
 
@@ -123,10 +124,17 @@ func _make_player() -> void:
     cam_pivot = Node3D.new()
     add_child(cam_pivot)
     var cam := Camera3D.new()
-    cam.position = Vector3(0, 0, 5)
     cam.fov = 60.0
     cam.far = 400.0
-    cam_pivot.add_child(cam)
+    var arm := SpringArm3D.new()
+    arm.spring_length = 5.0
+    arm.margin = 0.2
+    var arm_shape := SphereShape3D.new()
+    arm_shape.radius = 0.3
+    arm.shape = arm_shape
+    arm.add_excluded_object(player.get_rid())
+    cam_pivot.add_child(arm)
+    arm.add_child(cam)
 
 
 func _physics_process(delta: float) -> void:
