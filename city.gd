@@ -18,6 +18,10 @@ shader_type spatial;
 uniform vec3 base_color : source_color = vec3(0.8, 0.75, 0.65);
 uniform float half_h = 6.0;
 uniform float brick = 0.0;
+uniform float use_tex = 0.0;
+uniform float tex_scale = 0.4;
+uniform float tint = 0.5;
+uniform sampler2D wall_tex : source_color, filter_linear_mipmap, repeat_enable;
 varying vec3 lpos;
 varying vec3 lnorm;
 
@@ -44,6 +48,8 @@ void vertex() {
 void fragment() {
     vec3 col = base_color;
     float yy = lpos.y + half_h;
+    float h0 = abs(lnorm.x) > 0.5 ? lpos.z : lpos.x;
+    vec3 wt = texture(wall_tex, vec2(h0, yy) * tex_scale).rgb;
     if (abs(lnorm.y) < 0.5) {
         float h = lpos.x;
         if (abs(lnorm.x) > 0.5) {
@@ -51,7 +57,9 @@ void fragment() {
         }
         float n = vnoise(vec2(h, yy) * 0.7) * 0.6 + vnoise(vec2(h, yy) * 3.1) * 0.4;
         col *= 0.82 + 0.34 * n;
-        if (brick > 0.5) {
+        if (use_tex > 0.5) {
+            col = mix(wt, wt * base_color * 2.0, tint) * (0.9 + 0.2 * n);
+        } else if (brick > 0.5) {
             float by = yy / 0.12;
             float brow = floor(by);
             float bx = h / 0.3 + 0.5 * mod(brow, 2.0);
@@ -204,6 +212,45 @@ func _mat(color: Color) -> StandardMaterial3D:
     return m
 
 
+var tex_cache: Dictionary = {}
+
+
+func _tex(tname: String) -> Texture2D:
+    if tex_cache.has(tname):
+        return tex_cache[tname]
+    var path := "res://assets/tex/" + tname + ".jpg"
+    var t: Texture2D = null
+    if ResourceLoader.exists(path):
+        t = load(path) as Texture2D
+    tex_cache[tname] = t
+    return t
+
+
+func _pbr_mat(tname: String, scale: float, tint: Color, tint_amt: float) -> StandardMaterial3D:
+    var key := "pbr_" + tname + str(scale) + str(tint)
+    if mat_cache.has(key):
+        return mat_cache[key]
+    var d := _tex(tname + "_diff")
+    if d == null:
+        return null
+    var m := StandardMaterial3D.new()
+    m.albedo_texture = d
+    m.albedo_color = Color.WHITE.lerp(tint, tint_amt)
+    var n := _tex(tname + "_nor")
+    if n != null:
+        m.normal_enabled = true
+        m.normal_texture = n
+    var r := _tex(tname + "_rough")
+    if r != null:
+        m.roughness_texture = r
+    m.roughness = 1.0
+    m.uv1_triplanar = true
+    m.uv1_world_triplanar = true
+    m.uv1_scale = Vector3(scale, scale, scale)
+    mat_cache[key] = m
+    return m
+
+
 func _shader_mat(code: String, color: Color) -> ShaderMaterial:
     var key := code.hash()
     var ck := str(key) + str(color)
@@ -215,6 +262,13 @@ func _shader_mat(code: String, color: Color) -> ShaderMaterial:
     m.shader = sh
     m.set_shader_parameter("base", color)
     mat_cache[ck] = m
+    return m
+
+
+func _plaza_mat() -> Material:
+    var m: Material = _pbr_mat("tile_2", 0.3, cfg["plaza"], 0.3)
+    if m == null:
+        m = _shader_mat(TILE_SHADER, cfg["plaza"])
     return m
 
 
@@ -284,7 +338,9 @@ func _dome(pos: Vector3, r: float, color: Color) -> void:
 
 func _build_roads() -> void:
     var length := GRID * PITCH + ROAD_W
-    var road_mat := _shader_mat(ROAD_SHADER, cfg["road"])
+    var road_mat: Material = _pbr_mat("road_2", 0.25, cfg["road"], 0.35)
+    if road_mat == null:
+        road_mat = _shader_mat(ROAD_SHADER, cfg["road"])
     var dash_shader := Shader.new()
     dash_shader.code = DASH_SHADER
     var dash_z := ShaderMaterial.new()
@@ -304,7 +360,9 @@ func _build_roads() -> void:
 # ---------------------------------------------------------------- blocks
 
 func _build_blocks() -> void:
-    var walk_mat := _shader_mat(TILE_SHADER, cfg["sidewalk"])
+    var walk_mat: Material = _pbr_mat("concrete_1", 0.35, cfg["sidewalk"], 0.3)
+    if walk_mat == null:
+        walk_mat = _shader_mat(TILE_SHADER, cfg["sidewalk"])
     for i in GRID:
         for j in GRID:
             var bx := (i - 1) * PITCH
@@ -347,7 +405,15 @@ func _strip(axis: int, start: float, length: float, across: float, outward: floa
         mat.shader = building_shader
         mat.set_shader_parameter("base_color", palette[rng.randi() % palette.size()])
         mat.set_shader_parameter("half_h", h / 2.0)
-        mat.set_shader_parameter("brick", 1.0 if rng.randf() < float(cfg.get("brick", 0.4)) else 0.0)
+        var is_brick := rng.randf() < float(cfg.get("brick", 0.4))
+        mat.set_shader_parameter("brick", 1.0 if is_brick else 0.0)
+        var pick := int(absf(pos.x * 7.0 + pos.z * 13.0)) % 2
+        var wall := _tex(("brick_%d" if is_brick else "concrete_%d") % (pick + (1 if is_brick else 2)) + "_diff")
+        if wall != null:
+            mat.set_shader_parameter("wall_tex", wall)
+            mat.set_shader_parameter("use_tex", 1.0)
+            mat.set_shader_parameter("tex_scale", 0.5 if is_brick else 0.35)
+            mat.set_shader_parameter("tint", 0.25 if is_brick else 0.6)
         _mesh_box(pos, size, mat)
         _solid(pos, size)
         _add_sign(axis, outward, across, mid, w)
@@ -614,7 +680,7 @@ func _build_mountains() -> void:
 
 func _build_plaza() -> void:
     var platform := Vector3(BLOCK + 5.0, 0.16, BLOCK + 5.0)
-    _mesh_box(Vector3(0, 0, 0), platform, _shader_mat(TILE_SHADER, cfg["plaza"]), null, true)
+    _mesh_box(Vector3(0, 0, 0), platform, _plaza_mat(), null, true)
     _solid(Vector3(0, 0, 0), platform)
     for sx in [-20.0, 20.0]:
         for sz in [-20.0, 20.0]:
