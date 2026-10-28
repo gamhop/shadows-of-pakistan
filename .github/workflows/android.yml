@@ -33,11 +33,17 @@ jobs:
           path: .godot
           key: godot-import-${{ hashFiles('project.godot', '**/*.png', '**/*.glb', '**/*.gd', '**/*.tscn') }}
           restore-keys: godot-import-
-      - name: Build APK
+      - name: Build release APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: /tmp/release.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: shadows
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
+          echo "$KEYSTORE_B64" | base64 -d > /tmp/release.keystore
           mkdir -v -p build/android
           godot --headless --verbose --editor --quit || true
-          godot --headless --verbose --export-debug "Android Debug" build/android/shadows-of-pakistan.apk
+          godot --headless --verbose --export-release "Android Release" build/android/shadows-of-pakistan.apk
       - name: Publish latest APK
         uses: softprops/action-gh-release@v2
         with:
