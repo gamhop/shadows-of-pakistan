@@ -6,6 +6,9 @@ const GRAVITY := 20.0
 const STICK_RADIUS := 170.0
 const RUN_RADIUS := 110.0
 
+const Cities := preload("res://cities.gd")
+const CityScript := preload("res://city.gd")
+
 var player: CharacterBody3D
 var ground: StaticBody3D
 var cam: Camera3D
@@ -22,26 +25,71 @@ var health := 100.0
 var stamina := 100.0
 var exhausted := false
 
+var env: Environment
+var sky_mat: ProceduralSkyMaterial
+var sun: DirectionalLight3D
+var ground_mat: ShaderMaterial
+var city: Node3D
+var survival: CanvasLayer
+var city_idx := 0
+
 
 func _ready() -> void:
     _make_world()
     _make_player()
-    add_child(preload("res://street.gd").new())
-    add_child(preload("res://survival.gd").new())
+    survival = preload("res://survival.gd").new()
+    add_child(survival)
     _make_ui()
     add_child(preload("res://settings_menu.gd").new())
+    add_child(preload("res://city_menu.gd").new())
+    load_city(0)
+
+
+func load_city(idx: int) -> void:
+    var all: Array = Cities.get_all()
+    city_idx = clampi(idx, 0, all.size() - 1)
+    var t: Dictionary = all[city_idx]
+    if city:
+        remove_child(city)
+        city.queue_free()
+    city = CityScript.new()
+    city.set("cfg", t)
+    add_child(city)
+    _apply_theme(t)
+    var spawn: Vector3 = city.get("spawn")
+    player.position = spawn
+    player.velocity = Vector3.ZERO
+    cam_yaw = 0.0
+    cam_pitch = -0.12
+    var lines: Array = city.get("lines")
+    survival.call("respawn", lines, int(t["seed"]) + 1)
+    survival.call("_show_toast", str(t["name"]))
+
+
+func _apply_theme(t: Dictionary) -> void:
+    var horizon: Color = t["horizon"]
+    sky_mat.sky_top_color = t["sky_top"]
+    sky_mat.sky_horizon_color = horizon
+    sky_mat.ground_horizon_color = horizon
+    env.fog_light_color = horizon
+    env.fog_density = t["fog"]
+    env.ambient_light_color = t["ambient"]
+    sun.light_color = t["sun_color"]
+    sun.rotation_degrees = t["sun_rot"]
+    ground_mat.set_shader_parameter("col_a", t["ground_a"])
+    ground_mat.set_shader_parameter("col_b", t["ground_b"])
 
 
 func _make_world() -> void:
     var horizon := Color(0.62, 0.72, 0.82)
-    var sky_mat := ProceduralSkyMaterial.new()
+    sky_mat = ProceduralSkyMaterial.new()
     sky_mat.sky_top_color = Color(0.18, 0.38, 0.75)
     sky_mat.sky_horizon_color = horizon
     sky_mat.ground_horizon_color = horizon
     sky_mat.ground_bottom_color = Color(0.3, 0.4, 0.3)
     var sky := Sky.new()
     sky.sky_material = sky_mat
-    var env := Environment.new()
+    env = Environment.new()
     env.background_mode = Environment.BG_SKY
     env.sky = sky
     env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -55,7 +103,7 @@ func _make_world() -> void:
     we.environment = env
     add_child(we)
 
-    var sun := DirectionalLight3D.new()
+    sun = DirectionalLight3D.new()
     sun.rotation_degrees = Vector3(-68, -30, 0)
     sun.light_color = Color(1.0, 0.95, 0.85)
     sun.shadow_enabled = true
@@ -65,11 +113,10 @@ func _make_world() -> void:
     add_child(sun)
 
     var shader := Shader.new()
-    shader.code = "shader_type spatial;\nvarying vec3 wpos;\nvoid vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }\nvoid fragment() {\n  vec2 g = floor(wpos.xz / 2.0);\n  float c = mod(g.x + g.y, 2.0);\n  ALBEDO = mix(vec3(0.20, 0.30, 0.16), vec3(0.24, 0.35, 0.19), c);\n  ROUGHNESS = 1.0;\n}\n"
-    var ground_mat := ShaderMaterial.new()
+    shader.code = "shader_type spatial;\nuniform vec3 col_a : source_color = vec3(0.20, 0.30, 0.16);\nuniform vec3 col_b : source_color = vec3(0.24, 0.35, 0.19);\nvarying vec3 wpos;\nvoid vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }\nvoid fragment() {\n  vec2 g = floor(wpos.xz / 2.0);\n  float c = mod(g.x + g.y, 2.0);\n  ALBEDO = mix(col_a, col_b, c);\n  ROUGHNESS = 1.0;\n}\n"
+    ground_mat = ShaderMaterial.new()
     ground_mat.shader = shader
-    ground = _add_box(Vector3(0, -0.5, 0), Vector3(400, 1, 400), Color.WHITE, ground_mat)
-
+    ground = _add_box(Vector3(0, -0.5, 0), Vector3(700, 1, 700), Color.WHITE, ground_mat)
 
 
 func _add_box(pos: Vector3, size: Vector3, color: Color, mat: Material = null) -> StaticBody3D:

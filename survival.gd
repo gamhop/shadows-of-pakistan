@@ -12,6 +12,7 @@ var counts := [0, 0, 0]
 var items := []
 var toast_time := 0.0
 var nearest := -1
+var holder: Node3D
 
 var main_node: Node
 var water_bar: ColorRect
@@ -29,21 +30,32 @@ func _ready() -> void:
     process_mode = Node.PROCESS_MODE_ALWAYS
     layer = 11
     main_node = get_parent()
-    _spawn_items()
     _build_ui()
 
 
-func _spawn_items() -> void:
-    var holder := Node3D.new()
+func respawn(lines: Array, seed_v: int) -> void:
+    if holder and is_instance_valid(holder):
+        if holder.get_parent():
+            holder.get_parent().remove_child(holder)
+        holder.queue_free()
+    items.clear()
+    nearest = -1
+    holder = Node3D.new()
     var rng := RandomNumberGenerator.new()
-    rng.seed = 99
-    for i in 36:
+    rng.seed = seed_v
+    for i in 48:
         var kind := rng.randi() % 3
-        var x := rng.randf_range(-2.5, 2.5)
+        var c: float = lines[rng.randi() % lines.size()]
+        var off := rng.randf_range(-2.5, 2.5)
         if rng.randf() < 0.5:
             var s := 1.0 if rng.randf() < 0.5 else -1.0
-            x = s * rng.randf_range(5.4, 7.0)
-        var z := rng.randf_range(-75.0, 75.0)
+            off = s * rng.randf_range(5.4, 7.0)
+        var along := rng.randf_range(-95.0, 95.0)
+        var x := c + off
+        var z := along
+        if rng.randf() < 0.5:
+            x = along
+            z = c + off
         var node := MeshInstance3D.new()
         var color := Color(0.2, 0.55, 1.0)
         match kind:
