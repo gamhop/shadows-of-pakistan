@@ -1,0 +1,47 @@
+name: Android APK
+on:
+  push:
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+
+concurrency:
+  group: android-build
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.2.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    container:
+      image: barichello/godot-ci:4.2.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: |
+          mkdir -v -p ~/.local/share/godot/export_templates/
+          mkdir -v -p ~/.config/
+          mv /root/.config/godot ~/.config/godot
+          mv /root/.local/share/godot/export_templates/${GODOT_VERSION}.stable ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+      - name: Cache Godot imports
+        uses: actions/cache@v4
+        with:
+          path: .godot
+          key: godot-import-${{ hashFiles('project.godot', '**/*.png', '**/*.glb', '**/*.gd', '**/*.tscn') }}
+          restore-keys: godot-import-
+      - name: Build APK
+        run: |
+          mkdir -v -p build/android
+          godot --headless --verbose --editor --quit || true
+          godot --headless --verbose --export-debug "Android Debug" build/android/shadows-of-pakistan.apk
+      - name: Publish latest APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest APK
+          prerelease: true
+          files: build/android/shadows-of-pakistan.apk
