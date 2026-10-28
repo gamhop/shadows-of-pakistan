@@ -24,6 +24,7 @@ func _ready() -> void:
     _make_world()
     _make_player()
     _make_ui()
+    add_child(preload("res://settings_menu.gd").new())
 
 
 func _make_world() -> void:
@@ -229,8 +230,8 @@ func _input(event: InputEvent) -> void:
         if d.index == stick_touch:
             _update_stick(d.position)
         elif d.index == look_touch:
-            cam_yaw -= d.relative.x * 0.005
-            cam_pitch = clampf(cam_pitch - d.relative.y * 0.004, -0.55, 0.2)
+            cam_yaw -= d.relative.x * 0.005 * float(Engine.get_meta("cam_sens", 1.0))
+            cam_pitch = clampf(cam_pitch - d.relative.y * 0.004 * float(Engine.get_meta("cam_sens", 1.0)), -0.55, 0.2)
 
 
 func _update_stick(pos: Vector2) -> void:
