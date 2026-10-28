@@ -180,6 +180,7 @@ func _on_sens() -> void:
 func _apply() -> void:
     if sun:
         sun.shadow_enabled = shadows
+        sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
         sun.directional_shadow_max_distance = shadow_dist
     RenderingServer.directional_shadow_atlas_set_size(shadow_size, true)
     var vp := get_viewport()

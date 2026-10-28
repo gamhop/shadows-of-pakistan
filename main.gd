@@ -7,6 +7,7 @@ const STICK_RADIUS := 170.0
 const RUN_RADIUS := 110.0
 
 var player: CharacterBody3D
+var ground: StaticBody3D
 var cam_pivot: Node3D
 var ui: Control
 var stick := Vector2.ZERO
@@ -23,6 +24,7 @@ var exhausted := false
 func _ready() -> void:
     _make_world()
     _make_player()
+    add_child(preload("res://street.gd").new())
     _make_ui()
     add_child(preload("res://settings_menu.gd").new())
 
@@ -61,22 +63,11 @@ func _make_world() -> void:
     shader.code = "shader_type spatial;\nvarying vec3 wpos;\nvoid vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }\nvoid fragment() {\n  vec2 g = floor(wpos.xz / 2.0);\n  float c = mod(g.x + g.y, 2.0);\n  ALBEDO = mix(vec3(0.20, 0.30, 0.16), vec3(0.24, 0.35, 0.19), c);\n  ROUGHNESS = 1.0;\n}\n"
     var ground_mat := ShaderMaterial.new()
     ground_mat.shader = shader
-    _add_box(Vector3(0, -0.5, 0), Vector3(400, 1, 400), Color.WHITE, ground_mat)
-
-    var rng := RandomNumberGenerator.new()
-    rng.seed = 7
-    for i in 25:
-        var x := rng.randf_range(-60.0, 60.0)
-        var z := rng.randf_range(-60.0, 60.0)
-        if Vector2(x, z).length() < 8.0:
-            continue
-        var h := rng.randf_range(2.0, 9.0)
-        var w := rng.randf_range(3.0, 7.0)
-        var d := rng.randf_range(3.0, 7.0)
-        _add_box(Vector3(x, h / 2.0, z), Vector3(w, h, d), Color(0.5 + rng.randf() * 0.15, 0.42, 0.35))
+    ground = _add_box(Vector3(0, -0.5, 0), Vector3(400, 1, 400), Color.WHITE, ground_mat)
 
 
-func _add_box(pos: Vector3, size: Vector3, color: Color, mat: Material = null) -> void:
+
+func _add_box(pos: Vector3, size: Vector3, color: Color, mat: Material = null) -> StaticBody3D:
     var body := StaticBody3D.new()
     body.position = pos
     var mesh := MeshInstance3D.new()
@@ -95,6 +86,7 @@ func _add_box(pos: Vector3, size: Vector3, color: Color, mat: Material = null) -
     col.shape = shape
     body.add_child(col)
     add_child(body)
+    return body
 
 
 func _make_player() -> void:
@@ -158,6 +150,8 @@ func _physics_process(delta: float) -> void:
     else:
         player.velocity.y -= GRAVITY * delta
     player.move_and_slide()
+    ground.position.x = player.position.x
+    ground.position.z = player.position.z
     if moving:
         var target := atan2(-dir.x, -dir.z)
         player.rotation.y = lerp_angle(player.rotation.y, target, 12.0 * delta)
