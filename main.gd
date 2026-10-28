@@ -10,6 +10,52 @@ const Cities := preload("res://cities.gd")
 const CityScript := preload("res://city.gd")
 const AvatarScript := preload("res://avatar.gd")
 
+const SKY_SHADER := """
+shader_type sky;
+uniform vec3 top_color : source_color = vec3(0.18, 0.38, 0.75);
+uniform vec3 horizon_color : source_color = vec3(0.62, 0.72, 0.82);
+uniform vec3 ground_color : source_color = vec3(0.3, 0.4, 0.3);
+uniform float cloud_cover = 0.45;
+
+float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void sky() {
+    vec3 d = EYEDIR;
+    float h = d.y;
+    vec3 col;
+    if (h > 0.0) {
+        col = mix(horizon_color, top_color, pow(clamp(h, 0.0, 1.0), 0.45));
+        col = mix(col, horizon_color * 1.05, exp(-h * 6.0) * 0.5);
+        vec2 uv = d.xz / (h + 0.18) * 1.4;
+        float n = vnoise(uv) * 0.55 + vnoise(uv * 2.3) * 0.3 + vnoise(uv * 5.1) * 0.15;
+        float c = smoothstep(1.0 - cloud_cover, 1.25 - cloud_cover, n);
+        c *= smoothstep(0.0, 0.15, h);
+        vec3 ccol = mix(vec3(0.72, 0.75, 0.83), vec3(1.0, 0.98, 0.94), n);
+        col = mix(col, ccol, c * 0.85);
+        if (LIGHT0_ENABLED) {
+            float s = max(dot(d, LIGHT0_DIRECTION), 0.0);
+            col += LIGHT0_COLOR * (pow(s, 600.0) * 3.0 + pow(s, 12.0) * 0.25);
+        }
+    } else {
+        col = mix(horizon_color, ground_color, clamp(-h * 4.0, 0.0, 1.0));
+    }
+    COLOR = col;
+}
+"""
+
 const GROUND_SHADER := """
 shader_type spatial;
 uniform vec3 col_a : source_color = vec3(0.2, 0.3, 0.16);
@@ -58,7 +104,7 @@ var stamina := 100.0
 var exhausted := false
 
 var env: Environment
-var sky_mat: ProceduralSkyMaterial
+var sky_mat: ShaderMaterial
 var sun: DirectionalLight3D
 var ground_mat: ShaderMaterial
 var city: Node3D
@@ -101,9 +147,8 @@ func load_city(idx: int) -> void:
 
 func _apply_theme(t: Dictionary) -> void:
     var horizon: Color = t["horizon"]
-    sky_mat.sky_top_color = t["sky_top"]
-    sky_mat.sky_horizon_color = horizon
-    sky_mat.ground_horizon_color = horizon
+    sky_mat.set_shader_parameter("top_color", t["sky_top"])
+    sky_mat.set_shader_parameter("horizon_color", horizon)
     env.fog_light_color = horizon
     env.fog_density = t["fog"]
     env.ambient_light_color = t["ambient"]
@@ -115,23 +160,34 @@ func _apply_theme(t: Dictionary) -> void:
 
 func _make_world() -> void:
     var horizon := Color(0.62, 0.72, 0.82)
-    sky_mat = ProceduralSkyMaterial.new()
-    sky_mat.sky_top_color = Color(0.18, 0.38, 0.75)
-    sky_mat.sky_horizon_color = horizon
-    sky_mat.ground_horizon_color = horizon
-    sky_mat.ground_bottom_color = Color(0.3, 0.4, 0.3)
+    var sky_shader := Shader.new()
+    sky_shader.code = SKY_SHADER
+    sky_mat = ShaderMaterial.new()
+    sky_mat.shader = sky_shader
+    sky_mat.set_shader_parameter("top_color", Color(0.18, 0.38, 0.75))
+    sky_mat.set_shader_parameter("horizon_color", horizon)
+    sky_mat.set_shader_parameter("ground_color", Color(0.3, 0.4, 0.3))
     var sky := Sky.new()
     sky.sky_material = sky_mat
+    sky.radiance_size = Sky.RADIANCE_SIZE_32
     env = Environment.new()
     env.background_mode = Environment.BG_SKY
     env.sky = sky
     env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
     env.ambient_light_color = Color(0.45, 0.5, 0.6)
-    env.ambient_light_energy = 0.5
+    env.ambient_light_energy = 0.55
+    env.ambient_light_sky_contribution = 0.35
     env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+    env.tonemap_white = 6.0
+    env.adjustment_enabled = true
+    env.adjustment_contrast = 1.1
+    env.adjustment_saturation = 1.12
     env.fog_enabled = true
     env.fog_light_color = horizon
     env.fog_density = 0.012
+    env.fog_sun_scatter = 0.15
+    env.fog_aerial_perspective = 0.35
+    env.fog_sky_affect = 0.6
     var we := WorldEnvironment.new()
     we.environment = env
     add_child(we)
@@ -139,7 +195,9 @@ func _make_world() -> void:
     sun = DirectionalLight3D.new()
     sun.rotation_degrees = Vector3(-68, -30, 0)
     sun.light_color = Color(1.0, 0.95, 0.85)
+    sun.light_energy = 1.25
     sun.shadow_enabled = true
+    sun.shadow_blur = 1.4
     sun.shadow_bias = 0.03
     sun.shadow_normal_bias = 1.0
     sun.directional_shadow_max_distance = 40.0
