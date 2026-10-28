@@ -8,6 +8,38 @@ const RUN_RADIUS := 110.0
 
 const Cities := preload("res://cities.gd")
 const CityScript := preload("res://city.gd")
+const AvatarScript := preload("res://avatar.gd")
+
+const GROUND_SHADER := """
+shader_type spatial;
+uniform vec3 col_a : source_color = vec3(0.2, 0.3, 0.16);
+uniform vec3 col_b : source_color = vec3(0.24, 0.35, 0.19);
+varying vec3 wpos;
+
+float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+
+void fragment() {
+    float n = vnoise(wpos.xz * 0.12) * 0.6 + vnoise(wpos.xz * 0.9) * 0.4;
+    float g = hash21(floor(wpos.xz * 5.0));
+    ALBEDO = mix(col_a, col_b, n) * (0.85 + 0.3 * g);
+    ROUGHNESS = 1.0;
+}
+"""
 
 var player: CharacterBody3D
 var ground: StaticBody3D
@@ -32,6 +64,7 @@ var ground_mat: ShaderMaterial
 var city: Node3D
 var survival: CanvasLayer
 var city_idx := 0
+var avatar: Node3D
 
 
 func _ready() -> void:
@@ -113,7 +146,7 @@ func _make_world() -> void:
     add_child(sun)
 
     var shader := Shader.new()
-    shader.code = "shader_type spatial;\nuniform vec3 col_a : source_color = vec3(0.20, 0.30, 0.16);\nuniform vec3 col_b : source_color = vec3(0.24, 0.35, 0.19);\nvarying vec3 wpos;\nvoid vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }\nvoid fragment() {\n  vec2 g = floor(wpos.xz / 2.0);\n  float c = mod(g.x + g.y, 2.0);\n  ALBEDO = mix(col_a, col_b, c);\n  ROUGHNESS = 1.0;\n}\n"
+    shader.code = GROUND_SHADER
     ground_mat = ShaderMaterial.new()
     ground_mat.shader = shader
     ground = _add_box(Vector3(0, -0.5, 0), Vector3(700, 1, 700), Color.WHITE, ground_mat)
@@ -146,23 +179,15 @@ func _make_player() -> void:
     player.position = Vector3(0, 0.1, 0)
     add_child(player)
 
-    var body_mesh := MeshInstance3D.new()
-    var cap := CapsuleMesh.new()
-    cap.radius = 0.4
-    cap.height = 1.8
-    var mat := StandardMaterial3D.new()
-    mat.albedo_color = Color(0.9, 0.45, 0.15)
-    cap.material = mat
-    body_mesh.mesh = cap
-    body_mesh.position.y = 0.9
-    player.add_child(body_mesh)
-
-    var nose := MeshInstance3D.new()
-    var nb := BoxMesh.new()
-    nb.size = Vector3(0.25, 0.25, 0.5)
-    nose.mesh = nb
-    nose.position = Vector3(0, 1.4, -0.4)
-    player.add_child(nose)
+    avatar = AvatarScript.new()
+    avatar.call("configure", {
+        "kameez": Color(0.88, 0.88, 0.82),
+        "shalwar": Color(0.88, 0.88, 0.82),
+        "skin": Color(0.78, 0.58, 0.44),
+        "headwear": 1,
+        "beard": true,
+    })
+    player.add_child(avatar)
 
     var col := CollisionShape3D.new()
     var shape := CapsuleShape3D.new()
@@ -212,6 +237,7 @@ func _physics_process(delta: float) -> void:
     else:
         player.velocity.y -= GRAVITY * delta
     player.move_and_slide()
+    avatar.call("animate", Vector2(player.velocity.x, player.velocity.z).length(), running, delta)
     ground.position.x = player.position.x
     ground.position.z = player.position.z
     if moving:

@@ -8,6 +8,8 @@ const PITCH := 65.0
 const GRID := 3
 const HALF := 105.0
 
+const PedScript := preload("res://ped.gd")
+
 const CAR_COLORS := [Color(0.9, 0.9, 0.9), Color(0.65, 0.66, 0.7), Color(0.08, 0.08, 0.1), Color(0.7, 0.12, 0.12), Color(0.15, 0.25, 0.6)]
 const RICKSHAW_COLORS := [Color(0.95, 0.8, 0.1), Color(0.1, 0.5, 0.2), Color(0.15, 0.3, 0.7)]
 
@@ -15,11 +17,23 @@ const SHADER := """
 shader_type spatial;
 uniform vec3 base_color : source_color = vec3(0.8, 0.75, 0.65);
 uniform float half_h = 6.0;
+uniform float brick = 0.0;
 varying vec3 lpos;
 varying vec3 lnorm;
 
-float hash(vec2 p) {
+float hash21(vec2 p) {
     return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
 void vertex() {
@@ -29,30 +43,109 @@ void vertex() {
 
 void fragment() {
     vec3 col = base_color;
+    float yy = lpos.y + half_h;
     if (abs(lnorm.y) < 0.5) {
         float h = lpos.x;
         if (abs(lnorm.x) > 0.5) {
             h = lpos.z;
         }
-        float fy = (lpos.y + half_h) / 3.2;
+        float n = vnoise(vec2(h, yy) * 0.7) * 0.6 + vnoise(vec2(h, yy) * 3.1) * 0.4;
+        col *= 0.82 + 0.34 * n;
+        if (brick > 0.5) {
+            float by = yy / 0.12;
+            float brow = floor(by);
+            float bx = h / 0.3 + 0.5 * mod(brow, 2.0);
+            float mortar = max(step(fract(by), 0.1), step(fract(bx), 0.07));
+            col = mix(col * 0.8, vec3(0.72, 0.69, 0.64), mortar * 0.7);
+        }
+        float fy = yy / 3.2;
         float row = floor(fy);
         float fr = fract(fy);
         float fx = h / 3.0;
         float cell = floor(fx);
         float fc = fract(fx);
         if (row < 0.5) {
-            float stripe = step(0.5, fract((lpos.y + half_h) * 4.0));
-            col = vec3(0.45, 0.46, 0.5) * (0.8 + 0.2 * stripe);
+            float stripe = step(0.5, fract(yy * 4.0));
+            col = vec3(0.4, 0.41, 0.45) * (0.8 + 0.2 * stripe) * (0.85 + 0.3 * n);
         } else {
-            float win = step(0.25, fc) * step(fc, 0.75) * step(0.3, fr) * step(fr, 0.78);
-            float lit = step(0.72, hash(vec2(cell, row)));
-            vec3 glass = mix(vec3(0.07, 0.09, 0.13), vec3(0.85, 0.7, 0.4), lit);
-            col = mix(col, glass, win);
-            col = col * (1.0 - 0.18 * step(fr, 0.07));
+            float fmask = step(0.2, fc) * step(fc, 0.8) * step(0.25, fr) * step(fr, 0.83);
+            float gmask = step(0.26, fc) * step(fc, 0.74) * step(0.31, fr) * step(fr, 0.77);
+            float lit = step(0.8, hash21(vec2(cell, row)));
+            vec3 gcol = mix(vec3(0.1, 0.14, 0.2), vec3(0.45, 0.55, 0.65), fr);
+            gcol = mix(gcol, vec3(0.9, 0.75, 0.45), lit * 0.8);
+            col = mix(col, vec3(0.55, 0.55, 0.54), fmask);
+            col = mix(col, gcol, gmask);
+            col *= 1.0 - 0.25 * step(fr, 0.07);
         }
+        col *= 0.7 + 0.3 * smoothstep(0.0, 4.0, yy);
+    } else if (lnorm.y > 0.5) {
+        col = vec3(0.35, 0.35, 0.34) * (0.85 + 0.3 * vnoise(lpos.xz * 0.6));
     }
     ALBEDO = col;
-    ROUGHNESS = 1.0;
+    ROUGHNESS = 0.9;
+}
+"""
+
+const ROAD_SHADER := """
+shader_type spatial;
+uniform vec3 base : source_color = vec3(0.13, 0.13, 0.14);
+varying vec3 wpos;
+
+float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+
+void fragment() {
+    float n = vnoise(wpos.xz * 0.5) * 0.5 + vnoise(wpos.xz * 2.5) * 0.3 + hash21(floor(wpos.xz * 16.0)) * 0.2;
+    ALBEDO = base * (0.7 + 0.6 * n);
+    ROUGHNESS = 0.95;
+}
+"""
+
+const TILE_SHADER := """
+shader_type spatial;
+uniform vec3 base : source_color = vec3(0.55, 0.54, 0.52);
+varying vec3 wpos;
+
+float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
+float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash21(i);
+    float b = hash21(i + vec2(1.0, 0.0));
+    float c = hash21(i + vec2(0.0, 1.0));
+    float d = hash21(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
+
+void fragment() {
+    vec2 g = wpos.xz / 1.2;
+    vec2 f = fract(g);
+    float seam = max(step(f.x, 0.04), step(f.y, 0.04));
+    float n = vnoise(wpos.xz * 0.8) * 0.5 + hash21(floor(g)) * 0.25 + 0.25;
+    vec3 col = base * (0.8 + 0.35 * n);
+    col = mix(col, col * 0.6, seam);
+    ALBEDO = col;
+    ROUGHNESS = 0.9;
 }
 """
 
@@ -96,6 +189,7 @@ func _ready() -> void:
     _build_trees()
     _build_vehicles()
     _build_trash()
+    _build_pedestrians()
     if cfg["mountains"]:
         _build_mountains()
 
@@ -107,6 +201,20 @@ func _mat(color: Color) -> StandardMaterial3D:
     m.albedo_color = color
     m.roughness = 1.0
     mat_cache[color] = m
+    return m
+
+
+func _shader_mat(code: String, color: Color) -> ShaderMaterial:
+    var key := code.hash()
+    var ck := str(key) + str(color)
+    if mat_cache.has(ck):
+        return mat_cache[ck]
+    var sh := Shader.new()
+    sh.code = code
+    var m := ShaderMaterial.new()
+    m.shader = sh
+    m.set_shader_parameter("base", color)
+    mat_cache[ck] = m
     return m
 
 
@@ -176,7 +284,7 @@ func _dome(pos: Vector3, r: float, color: Color) -> void:
 
 func _build_roads() -> void:
     var length := GRID * PITCH + ROAD_W
-    var road_mat := _mat(cfg["road"])
+    var road_mat := _shader_mat(ROAD_SHADER, cfg["road"])
     var dash_shader := Shader.new()
     dash_shader.code = DASH_SHADER
     var dash_z := ShaderMaterial.new()
@@ -196,7 +304,7 @@ func _build_roads() -> void:
 # ---------------------------------------------------------------- blocks
 
 func _build_blocks() -> void:
-    var walk_mat := _mat(cfg["sidewalk"])
+    var walk_mat := _shader_mat(TILE_SHADER, cfg["sidewalk"])
     for i in GRID:
         for j in GRID:
             var bx := (i - 1) * PITCH
@@ -239,9 +347,15 @@ func _strip(axis: int, start: float, length: float, across: float, outward: floa
         mat.shader = building_shader
         mat.set_shader_parameter("base_color", palette[rng.randi() % palette.size()])
         mat.set_shader_parameter("half_h", h / 2.0)
+        mat.set_shader_parameter("brick", 1.0 if rng.randf() < float(cfg.get("brick", 0.4)) else 0.0)
         _mesh_box(pos, size, mat)
         _solid(pos, size)
         _add_sign(axis, outward, across, mid, w)
+        if rng.randf() < 0.55:
+            var tx := pos.x + rng.randf_range(-1.5, 1.5) if axis == 0 else pos.x + rng.randf_range(-2.0, 2.0)
+            var tz := pos.z + rng.randf_range(-2.0, 2.0) if axis == 0 else pos.z + rng.randf_range(-1.5, 1.5)
+            var tank := _cyl(Vector3(tx, h + 0.6, tz), 0.6, 0.6, 1.2, Color(0.08, 0.09, 0.1), 10)
+            tank.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
         p += w
 
 
@@ -466,6 +580,23 @@ func _build_trash() -> void:
             add_child(mi)
 
 
+# ---------------------------------------------------------------- pedestrians
+
+func _build_pedestrians() -> void:
+    for n in 12:
+        var c: float = lines[rng.randi() % lines.size()]
+        var side := 1.0 if rng.randf() < 0.5 else -1.0
+        var p: Node3D = PedScript.new()
+        p.set("orient", rng.randi() % 2)
+        p.set("line_c", c + side * 7.0)
+        p.set("lo", -HALF + 10.0)
+        p.set("hi", HALF - 10.0)
+        p.set("t", rng.randf_range(-HALF + 10.0, HALF - 10.0))
+        p.set("dir", 1.0 if rng.randf() < 0.5 else -1.0)
+        p.set("seed_v", int(cfg["seed"]) * 10 + n)
+        add_child(p)
+
+
 # ---------------------------------------------------------------- mountains
 
 func _build_mountains() -> void:
@@ -483,7 +614,7 @@ func _build_mountains() -> void:
 
 func _build_plaza() -> void:
     var platform := Vector3(BLOCK + 5.0, 0.16, BLOCK + 5.0)
-    _mesh_box(Vector3(0, 0, 0), platform, _mat(cfg["plaza"]), null, true)
+    _mesh_box(Vector3(0, 0, 0), platform, _shader_mat(TILE_SHADER, cfg["plaza"]), null, true)
     _solid(Vector3(0, 0, 0), platform)
     for sx in [-20.0, 20.0]:
         for sz in [-20.0, 20.0]:
