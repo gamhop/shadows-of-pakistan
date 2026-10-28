@@ -7,7 +7,7 @@ const STICK_RADIUS := 170.0
 const RUN_RADIUS := 110.0
 
 var player: CharacterBody3D
-&
+var ground: StaticBody3D
 var cam: Camera3D
 var cam_pivot: Node3D
 var ui: Control
