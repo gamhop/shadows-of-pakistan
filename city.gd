@@ -429,7 +429,7 @@ func _strip(axis: int, start: float, length: float, across: float, outward: floa
         mat.set_shader_parameter("half_h", h / 2.0)
         var is_brick := rng.randf() < float(cfg.get("brick", 0.4))
         mat.set_shader_parameter("brick", 1.0 if is_brick else 0.0)
-        var pick := int(absf(pos.x * 7.0 + pos.z * 13.0)) % (3 if is_brick else 2)
+        var pick := int(absf(pos.x * 7.0 + pos.z * 13.0)) % (4 if is_brick else 2)
         var wall := _tex(("brick_%d" if is_brick else "concrete_%d") % (pick + (1 if is_brick else 2)) + "_diff")
         if wall != null:
             mat.set_shader_parameter("wall_tex", wall)
