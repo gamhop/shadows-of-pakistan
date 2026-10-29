@@ -128,6 +128,7 @@ func _ready() -> void:
     _make_ui()
     add_child(preload("res://settings_menu.gd").new())
     add_child(preload("res://build_label.gd").new())
+    add_child(preload("res://audio.gd").new())
     add_child(preload("res://city_menu.gd").new())
     load_city(0)
 

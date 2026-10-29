@@ -20,6 +20,7 @@ var wander_target := Vector3.ZERO
 var idle_time := 1.0
 var walk_time := 0.0
 var attack_cd := 0.0
+var growl_cd := 0.0
 var lost_time := 0.0
 var main_node: Node
 var player: Node3D
@@ -138,6 +139,9 @@ func _hit_player() -> void:
     var combat := get_tree().get_first_node_in_group("combat")
     if combat:
         combat.call("flash")
+    var au := get_tree().get_first_node_in_group("audio")
+    if au:
+        au.call("play2d", "punch", -2.0)
 
 
 func take_damage(amount: float, hit_pos: Vector3 = Vector3.ZERO, hit_dir: Vector3 = Vector3.ZERO, head: bool = false) -> void:
@@ -158,6 +162,8 @@ func take_damage(amount: float, hit_pos: Vector3 = Vector3.ZERO, hit_dir: Vector
     m.emission = Color(1, 1, 1)
     m.emission_energy_multiplier = 1.6
     get_tree().create_timer(0.07).timeout.connect(_unflash.bind(m))
+    if health > 0.0:
+        _snd("e_hurt", 0.0)
     if health <= 0.0:
         _die()
 
@@ -167,8 +173,15 @@ func _unflash(m: StandardMaterial3D) -> void:
         m.emission_enabled = false
 
 
+func _snd(kind: String, vol: float) -> void:
+    var au := get_tree().get_first_node_in_group("audio")
+    if au:
+        au.call("play3d", kind, global_position + Vector3(0, 1.6, 0), vol)
+
+
 func _die() -> void:
     dead = true
+    _snd("e_die", 0.0)
     died.emit()
     col_shape.set_deferred("disabled", true)
     bar_bg.visible = false
@@ -189,6 +202,7 @@ func _physics_process(delta: float) -> void:
         if player == null:
             return
     attack_cd = maxf(attack_cd - delta, 0.0)
+    growl_cd = maxf(growl_cd - delta, 0.0)
     stagger = maxf(stagger - delta, 0.0)
     flinch = maxf(flinch - delta * 6.0, 0.0)
     rotation.x = deg_to_rad(-9.0) * flinch
@@ -198,6 +212,9 @@ func _physics_process(delta: float) -> void:
     var dist := flat.length()
     var sees := dist < SIGHT_RANGE and _has_line_of_sight()
     if sees:
+        if not chasing and growl_cd <= 0.0:
+            _snd("e_growl", 0.0)
+            growl_cd = 6.0
         chasing = true
         lost_time = 0.0
     elif chasing:

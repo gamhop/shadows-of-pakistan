@@ -265,6 +265,7 @@ func _on_pick() -> void:
     var entry = items[nearest]
     var kind: int = entry["kind"]
     counts[kind] += 1
+    _snd("pickup")
     _show_toast("+1 " + NAMES[kind])
     var node: MeshInstance3D = entry["node"]
     node.queue_free()
@@ -334,6 +335,7 @@ func _use(kind: int) -> void:
                 msg = "Health +40"
     if not msg.contains("already"):
         counts[kind] -= 1
+        _snd(["drink", "eat", "heal"][kind])
     _bars_now()
     _refresh_bag(msg)
 
@@ -347,3 +349,9 @@ func _refresh_bag(msg: String = "") -> void:
     bag_info.text = "Health %d%%   Water %d%%   Food %d%%" % [int(h), int(water), int(food)]
     if msg != "":
         bag_info.text += "\n" + msg
+
+
+func _snd(kind: String) -> void:
+    var au := get_tree().get_first_node_in_group("audio")
+    if au:
+        au.call("play2d", kind)
