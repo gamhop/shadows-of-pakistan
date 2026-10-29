@@ -7,6 +7,9 @@ const DAMAGE := 20.0
 const MAG_SIZE := 30
 const RELOAD_TIME := 1.8
 const SHOT_RANGE := 70.0
+const HEAD_MULT := 2.5
+const HEAD_MIN_Y := 1.5
+const MAX_HOLES := 24
 
 var main_node: Node
 var ui: Control
@@ -19,6 +22,20 @@ var kills := 0
 var alive := 0
 var flash_t := 0.0
 var hit_t := 0.0
+var head_t := 0.0
+var recoil_off := 0.0
+var muzzle_t := 0.0
+var muzzle_mesh: MeshInstance3D
+var muzzle_light: OmniLight3D
+var holes: Array = []
+var hole_mat: StandardMaterial3D
+var rng := RandomNumberGenerator.new()
+var snd_shot: Array = []
+var snd_idx := 0
+var snd_hit: AudioStreamPlayer
+var snd_head: AudioStreamPlayer
+var snd_wall: AudioStreamPlayer
+var snd_click: AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -26,7 +43,9 @@ func _ready() -> void:
     layer = 8
     add_to_group("combat")
     main_node = get_parent()
+    rng.randomize()
     _build_ui()
+    _build_audio()
 
 
 func respawn(lines: Array, seed_v: int) -> void:
@@ -35,6 +54,7 @@ func respawn(lines: Array, seed_v: int) -> void:
             holder.get_parent().remove_child(holder)
         holder.queue_free()
     alive = 0
+    recoil_off = 0.0
     holder = Node3D.new()
     var rng := RandomNumberGenerator.new()
     rng.seed = seed_v
@@ -89,6 +109,13 @@ func _draw_ui() -> void:
     var vp := get_viewport().get_visible_rect().size
     var c := vp / 2.0
     var cc := Color(1, 0.3, 0.3) if hit_t > 0.0 else Color(1, 1, 1, 0.9)
+    if head_t > 0.0:
+        cc = Color(1, 0.85, 0.1)
+        var hc := head_t / 0.25
+        ui.draw_line(c + Vector2(-30, -30) * (1.0 + hc * 0.3), c + Vector2(-16, -16), cc, 4.0)
+        ui.draw_line(c + Vector2(30, -30) * (1.0 + hc * 0.3), c + Vector2(16, -16), cc, 4.0)
+        ui.draw_line(c + Vector2(-30, 30) * (1.0 + hc * 0.3), c + Vector2(-16, 16), cc, 4.0)
+        ui.draw_line(c + Vector2(30, 30) * (1.0 + hc * 0.3), c + Vector2(16, 16), cc, 4.0)
     ui.draw_line(c + Vector2(-22, 0), c + Vector2(-8, 0), cc, 3.0)
     ui.draw_line(c + Vector2(8, 0), c + Vector2(22, 0), cc, 3.0)
     ui.draw_line(c + Vector2(0, -22), c + Vector2(0, -8), cc, 3.0)
@@ -124,6 +151,19 @@ func _process(delta: float) -> void:
         return
     flash_t = maxf(flash_t - delta, 0.0)
     hit_t = maxf(hit_t - delta, 0.0)
+    head_t = maxf(head_t - delta, 0.0)
+    if recoil_off > 0.0001:
+        var back := recoil_off * clampf(7.0 * delta, 0.0, 1.0)
+        recoil_off -= back
+        var cp: float = main_node.get("cam_pitch")
+        main_node.set("cam_pitch", clampf(cp - back, -0.55, 0.2))
+    if muzzle_t > 0.0:
+        muzzle_t -= delta
+        if muzzle_t <= 0.0:
+            if muzzle_mesh:
+                muzzle_mesh.visible = false
+            if muzzle_light:
+                muzzle_light.visible = false
     ui.queue_redraw()
 
 
@@ -135,12 +175,14 @@ func _physics_process(delta: float) -> void:
         reload_left -= delta
         if reload_left <= 0.0:
             ammo = MAG_SIZE
+            snd_click.play()
     elif fire_touch != -1 and cooldown <= 0.0:
         _shoot()
         cooldown = FIRE_RATE
         ammo -= 1
         if ammo <= 0:
             reload_left = RELOAD_TIME
+            snd_click.play()
 
 
 func _shoot() -> void:
@@ -149,19 +191,211 @@ func _shoot() -> void:
     if cam == null or player == null:
         return
     var from := cam.global_position
-    var to := from + (-cam.global_transform.basis.z) * SHOT_RANGE
+    var dir := -cam.global_transform.basis.z
+    var to := from + dir * SHOT_RANGE
     var space := cam.get_world_3d().direct_space_state
     var q := PhysicsRayQueryParameters3D.create(from, to)
     q.exclude = [player.get_rid()]
     var hit := space.intersect_ray(q)
     var end := to
+    var muzzle := player.global_position + Vector3(0, 1.4, 0) + dir * 0.7 + cam.global_transform.basis.x * 0.25
     if not hit.is_empty():
         end = hit["position"]
         var col = hit["collider"]
+        var n: Vector3 = hit["normal"]
         if col and col.has_method("take_damage"):
-            col.take_damage(DAMAGE)
+            var head: bool = (end.y - col.global_position.y) >= HEAD_MIN_Y
+            var dmg := DAMAGE * (HEAD_MULT if head else 1.0)
+            col.call("take_damage", dmg, end, dir, head)
             hit_t = 0.15
-    _tracer(player.global_position + Vector3(0, 1.4, 0), end)
+            if head:
+                head_t = 0.25
+                snd_head.play()
+                Input.vibrate_handheld(55)
+            else:
+                snd_hit.play()
+                Input.vibrate_handheld(30)
+            _burst(end, n, Color(0.55, 0.02, 0.02), 12 if head else 8, 3.5)
+        else:
+            snd_wall.play()
+            _burst(end, n, Color(0.85, 0.8, 0.65), 6, 3.0)
+            _bullet_hole(end, n)
+    _tracer(muzzle, end)
+    _fire_feel(muzzle)
+
+
+func _fire_feel(muzzle: Vector3) -> void:
+    # gunshot sound (round-robin so shots overlap)
+    var p: AudioStreamPlayer = snd_shot[snd_idx]
+    snd_idx = (snd_idx + 1) % snd_shot.size()
+    p.pitch_scale = rng.randf_range(0.93, 1.07)
+    p.play()
+    Input.vibrate_handheld(14)
+    # recoil: camera kicks up a little, slightly sideways, then settles back
+    var kick := rng.randf_range(0.010, 0.018)
+    var cp: float = main_node.get("cam_pitch")
+    main_node.set("cam_pitch", clampf(cp + kick, -0.55, 0.2))
+    recoil_off += kick
+    var cy: float = main_node.get("cam_yaw")
+    main_node.set("cam_yaw", cy + rng.randf_range(-0.004, 0.004))
+    var cam := get_viewport().get_camera_3d()
+    if cam:
+        cam.fov -= 1.6
+    # muzzle flash
+    if muzzle_mesh == null or not is_instance_valid(muzzle_mesh):
+        _build_muzzle()
+    muzzle_mesh.global_position = muzzle
+    muzzle_mesh.rotation.z = rng.randf() * TAU
+    muzzle_mesh.scale = Vector3.ONE * rng.randf_range(0.8, 1.3)
+    muzzle_mesh.visible = true
+    muzzle_light.global_position = muzzle
+    muzzle_light.visible = true
+    muzzle_t = 0.045
+
+
+func _build_muzzle() -> void:
+    muzzle_mesh = MeshInstance3D.new()
+    var qm := QuadMesh.new()
+    qm.size = Vector2(0.45, 0.45)
+    var m := StandardMaterial3D.new()
+    m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    m.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+    m.billboard_keep_scale = true
+    m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    m.albedo_color = Color(1.0, 0.8, 0.35, 0.95)
+    var g := GradientTexture2D.new()
+    g.fill = GradientTexture2D.FILL_RADIAL
+    g.fill_from = Vector2(0.5, 0.5)
+    g.fill_to = Vector2(1.0, 0.5)
+    var gr := Gradient.new()
+    gr.set_color(0, Color(1, 1, 1, 1))
+    gr.set_color(1, Color(1, 1, 1, 0))
+    g.gradient = gr
+    m.albedo_texture = g
+    qm.material = m
+    muzzle_mesh.mesh = qm
+    muzzle_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    muzzle_mesh.visible = false
+    main_node.add_child(muzzle_mesh)
+    muzzle_light = OmniLight3D.new()
+    muzzle_light.light_color = Color(1.0, 0.75, 0.4)
+    muzzle_light.light_energy = 2.5
+    muzzle_light.omni_range = 5.0
+    muzzle_light.shadow_enabled = false
+    muzzle_light.visible = false
+    main_node.add_child(muzzle_light)
+
+
+func _burst(pos: Vector3, normal: Vector3, color: Color, count: int, speed: float) -> void:
+    var p := CPUParticles3D.new()
+    p.amount = count
+    p.lifetime = 0.45
+    p.one_shot = true
+    p.explosiveness = 1.0
+    p.direction = normal
+    p.spread = 55.0
+    p.initial_velocity_min = speed * 0.5
+    p.initial_velocity_max = speed
+    p.gravity = Vector3(0, -9.0, 0)
+    p.scale_amount_min = 0.6
+    p.scale_amount_max = 1.2
+    var bm := BoxMesh.new()
+    bm.size = Vector3(0.045, 0.045, 0.045)
+    var mat := StandardMaterial3D.new()
+    mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    mat.albedo_color = color
+    bm.material = mat
+    p.mesh = bm
+    p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    main_node.add_child(p)
+    p.global_position = pos + normal * 0.05
+    p.emitting = true
+    get_tree().create_timer(0.9).timeout.connect(p.queue_free)
+
+
+func _bullet_hole(pos: Vector3, normal: Vector3) -> void:
+    if hole_mat == null:
+        hole_mat = StandardMaterial3D.new()
+        hole_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+        hole_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+        hole_mat.albedo_color = Color(0.03, 0.03, 0.03, 0.9)
+        var g := GradientTexture2D.new()
+        g.fill = GradientTexture2D.FILL_RADIAL
+        g.fill_from = Vector2(0.5, 0.5)
+        g.fill_to = Vector2(1.0, 0.5)
+        var gr := Gradient.new()
+        gr.set_color(0, Color(1, 1, 1, 1))
+        gr.set_color(1, Color(1, 1, 1, 0))
+        g.gradient = gr
+        hole_mat.albedo_texture = g
+    var mi := MeshInstance3D.new()
+    var qm := QuadMesh.new()
+    qm.size = Vector2(0.16, 0.16)
+    qm.material = hole_mat
+    mi.mesh = qm
+    mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    main_node.add_child(mi)
+    var up := Vector3.UP if absf(normal.y) < 0.95 else Vector3.RIGHT
+    mi.global_position = pos + normal * 0.012
+    mi.look_at(pos - normal, up)
+    holes.append(mi)
+    if holes.size() > MAX_HOLES:
+        var old = holes.pop_front()
+        if is_instance_valid(old):
+            old.queue_free()
+
+
+# ---------- procedural sounds (no audio files needed) ----------
+func _build_audio() -> void:
+    var shot := _synth(0.28, 0)
+    for i in 4:
+        snd_shot.append(_player(shot, -4.0))
+    snd_hit = _player(_synth(0.14, 1), -3.0)
+    snd_head = _player(_synth(0.22, 2), -2.0)
+    snd_wall = _player(_synth(0.1, 3), -8.0)
+    snd_click = _player(_synth(0.06, 4), -6.0)
+
+
+func _wave(kind: int, t: float, nz: float) -> float:
+    match kind:
+        0:
+            return nz * exp(-t * 26.0) * 0.55 + sin(TAU * 85.0 * t) * exp(-t * 16.0) * 0.7 + nz * exp(-t * 90.0) * 0.5
+        1:
+            return sin(TAU * 170.0 * t) * exp(-t * 30.0) * 0.8 + nz * exp(-t * 55.0) * 0.4
+        2:
+            return sin(TAU * 150.0 * t) * exp(-t * 22.0) * 0.7 + sin(TAU * 1500.0 * t) * exp(-t * 28.0) * 0.45 + nz * exp(-t * 60.0) * 0.4
+        3:
+            return nz * exp(-t * 60.0) * 0.5 + sin(TAU * 900.0 * t) * exp(-t * 70.0) * 0.25
+        _:
+            return nz * exp(-t * 110.0) * 0.6 + sin(TAU * 2200.0 * t) * exp(-t * 120.0) * 0.3
+
+
+func _player(stream: AudioStream, vol_db: float) -> AudioStreamPlayer:
+    var p := AudioStreamPlayer.new()
+    p.stream = stream
+    p.volume_db = vol_db
+    p.process_mode = Node.PROCESS_MODE_PAUSABLE
+    add_child(p)
+    return p
+
+
+func _synth(dur: float, kind: int) -> AudioStreamWAV:
+    var rate := 22050
+    var n := int(dur * rate)
+    var data := PackedByteArray()
+    data.resize(n * 2)
+    var r := RandomNumberGenerator.new()
+    r.seed = 1234 + kind
+    for i in n:
+        var t := float(i) / float(rate)
+        var v := clampf(_wave(kind, t, r.randf() * 2.0 - 1.0), -1.0, 1.0)
+        data.encode_s16(i * 2, int(v * 32000.0))
+    var w := AudioStreamWAV.new()
+    w.format = AudioStreamWAV.FORMAT_16_BITS
+    w.mix_rate = rate
+    w.stereo = false
+    w.data = data
+    return w
 
 
 func _tracer(from: Vector3, to: Vector3) -> void:
@@ -170,7 +404,7 @@ func _tracer(from: Vector3, to: Vector3) -> void:
         return
     var mi := MeshInstance3D.new()
     var bm := BoxMesh.new()
-    bm.size = Vector3(0.04, 0.04, length)
+    bm.size = Vector3(0.035, 0.035, length)
     var mat := StandardMaterial3D.new()
     mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
     mat.albedo_color = Color(1.0, 0.9, 0.4)

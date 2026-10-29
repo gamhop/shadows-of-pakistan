@@ -27,6 +27,13 @@ var col_shape: CollisionShape3D
 var bar_bg: MeshInstance3D
 var bar_fg: MeshInstance3D
 var bar_mesh: QuadMesh
+var body_mat: StandardMaterial3D
+var head_mat: StandardMaterial3D
+var body_mi: MeshInstance3D
+var knock := Vector3.ZERO
+var stagger := 0.0
+var flinch := 0.0
+var was_head := false
 var rng := RandomNumberGenerator.new()
 
 
@@ -38,22 +45,23 @@ func _ready() -> void:
 
     var shape := CapsuleShape3D.new()
     shape.radius = 0.4
-    shape.height = 1.8
+    shape.height = 2.0
     col_shape = CollisionShape3D.new()
     col_shape.shape = shape
-    col_shape.position.y = 0.9
+    col_shape.position.y = 1.0
     add_child(col_shape)
 
     var body := MeshInstance3D.new()
     var cap := CapsuleMesh.new()
     cap.radius = 0.4
     cap.height = 1.8
-    var body_mat := StandardMaterial3D.new()
+    body_mat = StandardMaterial3D.new()
     body_mat.albedo_color = Color(0.45, 0.1, 0.1)
     cap.material = body_mat
     body.mesh = cap
     body.position.y = 0.9
     add_child(body)
+    body_mi = body
 
     var head := MeshInstance3D.new()
     var hs := SphereMesh.new()
@@ -61,7 +69,7 @@ func _ready() -> void:
     hs.height = 0.4
     hs.radial_segments = 10
     hs.rings = 5
-    var head_mat := StandardMaterial3D.new()
+    head_mat = StandardMaterial3D.new()
     head_mat.albedo_color = Color(0.75, 0.55, 0.4)
     hs.material = head_mat
     head.mesh = hs
@@ -80,7 +88,7 @@ func _ready() -> void:
     bg_mesh.size = Vector2(1.0, 0.12)
     bg_mesh.material = _bar_mat(Color(0, 0, 0))
     bar_bg.mesh = bg_mesh
-    bar_bg.position = Vector3(0, 2.3, 0)
+    bar_bg.position = Vector3(0, 2.65, 0)
     bar_bg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     add_child(bar_bg)
 
@@ -88,7 +96,7 @@ func _ready() -> void:
     bar_mesh = QuadMesh.new()
     bar_mesh.material = _bar_mat(Color(0.9, 0.1, 0.1))
     bar_fg.mesh = bar_mesh
-    bar_fg.position = Vector3(0, 2.3, 0)
+    bar_fg.position = Vector3(0, 2.65, 0)
     bar_fg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
     add_child(bar_fg)
     _update_bar()
@@ -132,15 +140,31 @@ func _hit_player() -> void:
         combat.call("flash")
 
 
-func take_damage(amount: float) -> void:
+func take_damage(amount: float, hit_pos: Vector3 = Vector3.ZERO, hit_dir: Vector3 = Vector3.ZERO, head: bool = false) -> void:
     if dead:
         return
     health -= amount
     chasing = true
     lost_time = 0.0
+    was_head = head
     _update_bar()
+    # hit reaction: small shove along the bullet, brief stagger, lean back, colour flash
+    var push := Vector3(hit_dir.x, 0.0, hit_dir.z).normalized()
+    knock = push * (4.5 if head else 2.8)
+    stagger = 0.25 if head else 0.12
+    flinch = 1.0
+    var m: StandardMaterial3D = head_mat if head else body_mat
+    m.emission_enabled = true
+    m.emission = Color(1, 1, 1)
+    m.emission_energy_multiplier = 1.6
+    get_tree().create_timer(0.07).timeout.connect(_unflash.bind(m))
     if health <= 0.0:
         _die()
+
+
+func _unflash(m: StandardMaterial3D) -> void:
+    if m:
+        m.emission_enabled = false
 
 
 func _die() -> void:
@@ -151,6 +175,9 @@ func _die() -> void:
     bar_fg.visible = false
     rotation_degrees.x = -90.0
     position.y += 0.4
+    if was_head:
+        velocity = Vector3.ZERO
+    body_mat.emission_enabled = false
     get_tree().create_timer(6.0).timeout.connect(queue_free)
 
 
@@ -162,6 +189,10 @@ func _physics_process(delta: float) -> void:
         if player == null:
             return
     attack_cd = maxf(attack_cd - delta, 0.0)
+    stagger = maxf(stagger - delta, 0.0)
+    flinch = maxf(flinch - delta * 6.0, 0.0)
+    rotation.x = deg_to_rad(-9.0) * flinch
+    knock = knock.move_toward(Vector3.ZERO, 14.0 * delta)
     var flat := player.global_position - global_position
     flat.y = 0.0
     var dist := flat.length()
@@ -205,6 +236,11 @@ func _physics_process(delta: float) -> void:
             velocity.x = d.x * WALK_SPEED
             velocity.z = d.z * WALK_SPEED
 
+    if stagger > 0.0:
+        velocity.x *= 0.25
+        velocity.z *= 0.25
+    velocity.x += knock.x
+    velocity.z += knock.z
     if is_on_floor():
         velocity.y = 0.0
     else:
