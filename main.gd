@@ -5,6 +5,8 @@ const RUN_SPEED := 9.5
 const GRAVITY := 20.0
 const STICK_RADIUS := 170.0
 const RUN_RADIUS := 110.0
+const PITCH_MIN := -1.25   # neeche dekhna (pao dikhte hain)
+const PITCH_MAX := 0.7     # upar dekhna
 
 const Cities := preload("res://cities.gd")
 const CityScript := preload("res://city.gd")
@@ -207,7 +209,7 @@ func _make_world() -> void:
     sun.rotation_degrees = Vector3(-68, -30, 0)
     sun.light_color = Color(1.0, 0.95, 0.85)
     sun.light_energy = 1.25
-    sun.shadow_enabled = true
+    sun.shadow_enabled = false
     sun.shadow_blur = 1.4
     sun.shadow_bias = 0.03
     sun.shadow_normal_bias = 1.0
@@ -374,7 +376,7 @@ func _input(event: InputEvent) -> void:
                 _update_stick(t.position)
             elif run_touch == -1 and t.position.distance_to(_run_base()) < RUN_RADIUS * 1.4:
                 run_on = not run_on
-            elif look_touch == -1 and t.position.x > vp.x * 0.4:
+            elif look_touch == -1 and not _over_button(t.position):
                 look_touch = t.index
         else:
             if t.index == stick_touch:
@@ -390,7 +392,25 @@ func _input(event: InputEvent) -> void:
             _update_stick(d.position)
         elif d.index == look_touch:
             cam_yaw -= d.relative.x * 0.005 * float(Engine.get_meta("cam_sens", 1.0))
-            cam_pitch = clampf(cam_pitch - d.relative.y * 0.004 * float(Engine.get_meta("cam_sens", 1.0)), -0.55, 0.2)
+            cam_pitch = clampf(cam_pitch - d.relative.y * 0.0045 * float(Engine.get_meta("cam_sens", 1.0)), PITCH_MIN, PITCH_MAX)
+
+
+# kya is jagah koi button hai? (to wahan se camera na ghume)
+func _over_button(pos: Vector2) -> bool:
+    for c in get_children():
+        if c is CanvasLayer and _scan_buttons(c, pos):
+            return true
+    return false
+
+
+func _scan_buttons(n: Node, pos: Vector2) -> bool:
+    for c in n.get_children():
+        var b := c as Button
+        if b and b.is_visible_in_tree() and b.get_global_rect().has_point(pos):
+            return true
+        if _scan_buttons(c, pos):
+            return true
+    return false
 
 
 func _update_stick(pos: Vector2) -> void:

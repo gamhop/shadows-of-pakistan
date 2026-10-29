@@ -179,7 +179,7 @@ func _on_sens() -> void:
 
 func _apply() -> void:
     if sun:
-        sun.shadow_enabled = shadows
+        sun.shadow_enabled = false   # saye hamesha band
         sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
         sun.directional_shadow_max_distance = shadow_dist
     RenderingServer.directional_shadow_atlas_set_size(shadow_size, true)
@@ -200,7 +200,8 @@ func _apply() -> void:
 
 func _refresh() -> void:
     btn_preset.text = "Quality: " + (PRESETS[preset] if preset >= 0 else "Custom")
-    btn_shadows.text = "Shadows: " + ("On" if shadows else "Off")
+    btn_shadows.text = "Shadows: Off"
+    btn_shadows.disabled = true
     btn_aa.text = "Anti-aliasing: " + AA_NAMES[aa]
     btn_fps.text = "FPS limit: " + FPS_NAMES[fps_idx]
     btn_showfps.text = "Show FPS: " + ("On" if show_fps else "Off")
