@@ -38,6 +38,7 @@ jobs:
           sed -i "s|^version/code=.*|version/code=${GITHUB_RUN_NUMBER}|" export_presets.cfg
           sed -i "s|^version/name=.*|version/name=\"0.1.${GITHUB_RUN_NUMBER}\"|" export_presets.cfg
           grep -n "version/" export_presets.cfg
+          sh ci_stamp.sh
       - name: Build release APK
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}

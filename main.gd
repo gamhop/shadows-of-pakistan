@@ -109,6 +109,7 @@ var sun: DirectionalLight3D
 var ground_mat: ShaderMaterial
 var city: Node3D
 var survival: CanvasLayer
+var combat: CanvasLayer
 var city_idx := 0
 var avatar: Node3D
 
@@ -118,8 +119,11 @@ func _ready() -> void:
     _make_player()
     survival = preload("res://survival.gd").new()
     add_child(survival)
+    combat = preload("res://combat.gd").new()
+    add_child(combat)
     _make_ui()
     add_child(preload("res://settings_menu.gd").new())
+    add_child(preload("res://build_label.gd").new())
     add_child(preload("res://city_menu.gd").new())
     load_city(0)
 
@@ -142,6 +146,7 @@ func load_city(idx: int) -> void:
     cam_pitch = -0.12
     var lines: Array = city.get("lines")
     survival.call("respawn", lines, int(t["seed"]) + 1)
+    combat.call("respawn", lines, int(t["seed"]) + 2)
     survival.call("_show_toast", str(t["name"]))
 
 
