@@ -265,6 +265,27 @@ func _shader_mat(code: String, color: Color) -> ShaderMaterial:
     return m
 
 
+func _tmat(tname: String, tint: Color, scale: float, fallback: Color) -> StandardMaterial3D:
+    var key := "tm_" + tname + str(tint) + str(scale)
+    if mat_cache.has(key):
+        return mat_cache[key]
+    var d := _tex(tname)
+    if d == null:
+        return _mat(fallback)
+    var m := StandardMaterial3D.new()
+    m.albedo_texture = d
+    m.albedo_color = tint
+    m.roughness = 0.85
+    m.uv1_triplanar = true
+    m.uv1_scale = Vector3(scale, scale, scale)
+    mat_cache[key] = m
+    return m
+
+
+func _lm(c: Color) -> StandardMaterial3D:
+    return _tmat("concrete_3_diff", Color.WHITE.lerp(c, 0.8), 0.3, c)
+
+
 func _plaza_mat() -> Material:
     var m: Material = _pbr_mat("tile_2", 0.3, cfg["plaza"], 0.12)
     if m == null:
@@ -502,8 +523,8 @@ func _build_poles_and_cables() -> void:
 
 
 func _tree(x: float, z: float) -> void:
-    var trunk := _mat(Color(0.3, 0.2, 0.12))
-    var leaf := _mat(cfg["leaf"])
+    var trunk := _tmat("bark_diff", Color.WHITE, 0.9, Color(0.3, 0.2, 0.12))
+    var leaf := _tmat("leaf_diff", cfg["leaf"], 0.8, cfg["leaf"])
     _mesh_box(Vector3(x, 1.5, z), Vector3(0.3, 3.0, 0.3), trunk)
     _solid(Vector3(x, 1.5, z), Vector3(0.3, 3.0, 0.3))
     var crown := MeshInstance3D.new()
@@ -563,7 +584,8 @@ func _wheel(parent: Node3D, pos: Vector3, r: float, wd: float) -> void:
 
 func _make_car(pos: Vector3, rot: float) -> void:
     var body := _vehicle_body(pos, Vector3(1.9, 1.5, 4.2), rot)
-    var cm := _mat(CAR_COLORS[rng.randi() % CAR_COLORS.size()])
+    var car_c: Color = CAR_COLORS[rng.randi() % CAR_COLORS.size()]
+    var cm := _tmat("metal_diff", car_c, 0.6, car_c)
     _mesh_box(Vector3(0, 0.65, 0), Vector3(1.9, 0.7, 4.2), cm, body)
     _mesh_box(Vector3(0, 1.15, -0.2), Vector3(1.6, 0.6, 2.3), cm, body)
     _mesh_box(Vector3(0, 1.22, -0.2), Vector3(1.62, 0.3, 2.0), _mat(Color(0.06, 0.08, 0.1)), body, true)
@@ -574,7 +596,8 @@ func _make_car(pos: Vector3, rot: float) -> void:
 
 func _make_rickshaw(pos: Vector3, rot: float) -> void:
     var body := _vehicle_body(pos, Vector3(1.3, 2.0, 2.6), rot)
-    var cm := _mat(RICKSHAW_COLORS[rng.randi() % RICKSHAW_COLORS.size()])
+    var rick_c: Color = RICKSHAW_COLORS[rng.randi() % RICKSHAW_COLORS.size()]
+    var cm := _tmat("metal_diff", rick_c, 0.6, rick_c)
     _mesh_box(Vector3(0, 0.7, 0.1), Vector3(1.2, 0.8, 2.2), cm, body)
     _mesh_box(Vector3(0, 1.5, 0.35), Vector3(1.15, 0.8, 1.6), cm, body)
     _mesh_box(Vector3(0, 1.5, -0.46), Vector3(1.0, 0.5, 0.05), _mat(Color(0.06, 0.08, 0.1)), body, true)
@@ -586,7 +609,8 @@ func _make_rickshaw(pos: Vector3, rot: float) -> void:
 
 func _make_bike(pos: Vector3, rot: float) -> void:
     var body := _vehicle_body(pos, Vector3(0.6, 1.1, 1.9), rot)
-    var cm := _mat(Color.from_hsv(rng.randf(), 0.6, 0.6))
+    var bike_c := Color.from_hsv(rng.randf(), 0.6, 0.6)
+    var cm := _tmat("metal_diff", bike_c, 0.8, bike_c)
     _mesh_box(Vector3(0, 0.65, 0), Vector3(0.4, 0.45, 1.3), cm, body)
     _mesh_box(Vector3(0, 0.95, 0.1), Vector3(0.35, 0.12, 0.6), black_mat, body)
     _wheel(body, Vector3(0, 0.3, -0.7), 0.3, 0.15)
@@ -708,9 +732,9 @@ func _build_plaza() -> void:
 
 
 func _lm_clock(c: Color) -> void:
-    _mesh_box(Vector3(0, 1.1, 0), Vector3(8, 2, 8), _mat(c))
-    _mesh_box(Vector3(0, 11, 0), Vector3(4, 18, 4), _mat(c))
-    _mesh_box(Vector3(0, 21.5, 0), Vector3(5.4, 5.4, 5.4), _mat(c.darkened(0.15)))
+    _mesh_box(Vector3(0, 1.1, 0), Vector3(8, 2, 8), _lm(c))
+    _mesh_box(Vector3(0, 11, 0), Vector3(4, 18, 4), _lm(c))
+    _mesh_box(Vector3(0, 21.5, 0), Vector3(5.4, 5.4, 5.4), _lm(c.darkened(0.15)))
     var face := _mat(Color(0.95, 0.95, 0.9))
     _mesh_box(Vector3(0, 21.5, 2.75), Vector3(3.6, 3.6, 0.1), face, null, true)
     _mesh_box(Vector3(0, 21.5, -2.75), Vector3(3.6, 3.6, 0.1), face, null, true)
@@ -730,7 +754,7 @@ func _lm_minar(c: Color) -> void:
 
 
 func _lm_mosque(c: Color) -> void:
-    _mesh_box(Vector3(0, 5, 0), Vector3(20, 10, 20), _mat(c))
+    _mesh_box(Vector3(0, 5, 0), Vector3(20, 10, 20), _lm(c))
     var roof := _cyl(Vector3(0, 15, 0), 0.0, 14.2, 10.0, c.darkened(0.05), 4)
     roof.rotation_degrees.y = 45.0
     _solid(Vector3(0, 5, 0), Vector3(20, 10, 20))
@@ -743,12 +767,12 @@ func _lm_mosque(c: Color) -> void:
 
 func _lm_gate(c: Color) -> void:
     for sx in [-7.0, 7.0]:
-        _mesh_box(Vector3(sx, 7.0, 0), Vector3(4, 14, 4), _mat(c))
+        _mesh_box(Vector3(sx, 7.0, 0), Vector3(4, 14, 4), _lm(c))
         _solid(Vector3(sx, 7.0, 0), Vector3(4, 14, 4))
-    _mesh_box(Vector3(0, 15, 0), Vector3(18, 4, 4), _mat(c))
+    _mesh_box(Vector3(0, 15, 0), Vector3(18, 4, 4), _lm(c))
     _solid(Vector3(0, 15, 0), Vector3(18, 4, 4))
     for k in 5:
-        _mesh_box(Vector3(-7.2 + k * 3.6, 17.6, 0), Vector3(1.8, 1.2, 4), _mat(c.darkened(0.15)))
+        _mesh_box(Vector3(-7.2 + k * 3.6, 17.6, 0), Vector3(1.8, 1.2, 4), _lm(c.darkened(0.15)))
 
 
 func _lm_fountain(c: Color) -> void:
@@ -760,9 +784,9 @@ func _lm_fountain(c: Color) -> void:
 
 
 func _lm_shrine(c: Color) -> void:
-    var wall := _mat(Color(0.9, 0.85, 0.72))
+    var wall := _lm(Color(0.9, 0.85, 0.72))
     _mesh_box(Vector3(0, 4, 0), Vector3(16, 8, 16), wall)
-    _mesh_box(Vector3(0, 8.2, 0), Vector3(14, 0.5, 14), _mat(c))
+    _mesh_box(Vector3(0, 8.2, 0), Vector3(14, 0.5, 14), _lm(c))
     _dome(Vector3(0, 8.4, 0), 6.0, c)
     _solid(Vector3(0, 4, 0), Vector3(16, 8, 16))
     for sx in [-9.0, 9.0]:

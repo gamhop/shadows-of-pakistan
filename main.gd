@@ -60,6 +60,8 @@ const GROUND_SHADER := """
 shader_type spatial;
 uniform vec3 col_a : source_color = vec3(0.2, 0.3, 0.16);
 uniform vec3 col_b : source_color = vec3(0.24, 0.35, 0.19);
+uniform float use_detail = 0.0;
+uniform sampler2D detail : source_color, filter_linear_mipmap, repeat_enable;
 varying vec3 wpos;
 
 float hash21(vec2 p) {
@@ -82,7 +84,9 @@ void vertex() { wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
 void fragment() {
     float n = vnoise(wpos.xz * 0.12) * 0.6 + vnoise(wpos.xz * 0.9) * 0.4;
     float g = hash21(floor(wpos.xz * 5.0));
-    ALBEDO = mix(col_a, col_b, n) * (0.85 + 0.3 * g);
+    float dt = texture(detail, wpos.xz * 0.25).r * 0.6 + texture(detail, wpos.xz * 0.031).r * 0.4;
+    float dk = mix(1.0, 0.45 + 0.7 * dt, use_detail);
+    ALBEDO = mix(col_a, col_b, n) * (0.85 + 0.3 * g) * dk;
     ROUGHNESS = 1.0;
 }
 """
@@ -212,6 +216,9 @@ func _make_world() -> void:
     shader.code = GROUND_SHADER
     ground_mat = ShaderMaterial.new()
     ground_mat.shader = shader
+    if ResourceLoader.exists("res://assets/tex/ground_detail_diff.jpg"):
+        ground_mat.set_shader_parameter("detail", load("res://assets/tex/ground_detail_diff.jpg"))
+        ground_mat.set_shader_parameter("use_detail", 1.0)
     ground = _add_box(Vector3(0, -0.5, 0), Vector3(700, 1, 700), Color.WHITE, ground_mat)
 
 

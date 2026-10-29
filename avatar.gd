@@ -40,6 +40,15 @@ func _m(color: Color, rough: float = 0.85) -> StandardMaterial3D:
     return m
 
 
+func _fab(color: Color) -> StandardMaterial3D:
+    var m := _m(color)
+    var path := "res://assets/tex/fabric_diff.jpg"
+    if ResourceLoader.exists(path):
+        m.albedo_texture = load(path)
+        m.uv1_scale = Vector3(6, 6, 6)
+    return m
+
+
 func _capsule(parent: Node3D, pos: Vector3, r: float, h: float, color: Color, scl: Vector3 = Vector3.ONE) -> void:
     var mi := MeshInstance3D.new()
     var cm := CapsuleMesh.new()
@@ -47,7 +56,7 @@ func _capsule(parent: Node3D, pos: Vector3, r: float, h: float, color: Color, sc
     cm.height = h
     cm.radial_segments = 12
     cm.rings = 4
-    cm.material = _m(color)
+    cm.material = _fab(color)
     mi.mesh = cm
     mi.position = pos
     mi.scale = scl
@@ -72,7 +81,7 @@ func _box(parent: Node3D, pos: Vector3, size: Vector3, color: Color) -> void:
     var mi := MeshInstance3D.new()
     var bm := BoxMesh.new()
     bm.size = size
-    bm.material = _m(color)
+    bm.material = _fab(color)
     mi.mesh = bm
     mi.position = pos
     parent.add_child(mi)
