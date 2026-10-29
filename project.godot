@@ -22,5 +22,6 @@ window/handheld/orientation=0
 
 texture={
 "compress/mode": 2,
-"mipmaps/generate": true
+"mipmaps/generate": true,
+"process/size_limit": 512
 }
