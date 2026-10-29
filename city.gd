@@ -200,6 +200,7 @@ func _ready() -> void:
     _build_pedestrians()
     if cfg["mountains"]:
         _build_mountains()
+    _build_carts()
 
 
 func _mat(color: Color) -> StandardMaterial3D:
@@ -464,6 +465,14 @@ func _add_sign(axis: int, outward: float, across: float, mid: float, w: float) -
         label_pos = Vector3(face + outward * 0.32, 3.55, mid)
         rot = -90.0 if outward < 0.0 else 90.0
     _mesh_box(plate_pos, plate_size, _mat(col), null, true)
+    var awn_cols := [Color(0.72, 0.22, 0.18), Color(0.8, 0.7, 0.5), Color(0.2, 0.5, 0.5), Color(0.35, 0.3, 0.28)]
+    var awn_c: Color = awn_cols[int(absf(mid * 3.0 + across)) % awn_cols.size()]
+    if axis == 0:
+        var aw := _mesh_box(Vector3(mid, 3.0, face + outward * 0.7), Vector3(w * 0.8, 0.05, 1.4), _mat(awn_c), null, true)
+        aw.rotation_degrees.x = 12.0 * outward
+    else:
+        var aw2 := _mesh_box(Vector3(face + outward * 0.7, 3.0, mid), Vector3(1.4, 0.05, w * 0.8), _mat(awn_c), null, true)
+        aw2.rotation_degrees.z = -12.0 * outward
     var label := Label3D.new()
     label.text = shops[rng.randi() % shops.size()]
     label.font_size = 64
@@ -582,29 +591,103 @@ func _wheel(parent: Node3D, pos: Vector3, r: float, wd: float) -> void:
     parent.add_child(mi)
 
 
+func _glass() -> StandardMaterial3D:
+    if mat_cache.has("glass"):
+        return mat_cache["glass"]
+    var m := StandardMaterial3D.new()
+    m.albedo_color = Color(0.07, 0.1, 0.13)
+    m.roughness = 0.15
+    m.metallic = 0.4
+    mat_cache["glass"] = m
+    return m
+
+
+func _lamp(color: Color) -> StandardMaterial3D:
+    var key := "lamp" + str(color)
+    if mat_cache.has(key):
+        return mat_cache[key]
+    var m := StandardMaterial3D.new()
+    m.albedo_color = color
+    m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    mat_cache[key] = m
+    return m
+
+
+func _tilt(mi: MeshInstance3D, deg_x: float) -> void:
+    mi.rotation_degrees.x = deg_x
+
+
+func _plate_label(parent: Node3D, pos: Vector3, text: String, facing_back: bool) -> void:
+    var l := Label3D.new()
+    l.text = text
+    l.font_size = 40
+    l.pixel_size = 0.004
+    l.outline_size = 0
+    l.modulate = Color(0.05, 0.05, 0.05)
+    l.position = pos
+    l.shaded = false
+    if not facing_back:
+        l.rotation_degrees = Vector3(0, 180, 0)
+    parent.add_child(l)
+
+
 func _make_car(pos: Vector3, rot: float) -> void:
+    # Suzuki Mehran style hatchback. Front is -Z.
     var body := _vehicle_body(pos, Vector3(1.9, 1.5, 4.2), rot)
     var car_c: Color = CAR_COLORS[rng.randi() % CAR_COLORS.size()]
     var cm := _tmat("metal_diff", car_c, 0.6, car_c)
-    _mesh_box(Vector3(0, 0.65, 0), Vector3(1.9, 0.7, 4.2), cm, body)
-    _mesh_box(Vector3(0, 1.15, -0.2), Vector3(1.6, 0.6, 2.3), cm, body)
-    _mesh_box(Vector3(0, 1.22, -0.2), Vector3(1.62, 0.3, 2.0), _mat(Color(0.06, 0.08, 0.1)), body, true)
-    for sx in [-0.9, 0.9]:
-        for sz in [-1.3, 1.3]:
-            _wheel(body, Vector3(sx, 0.35, sz), 0.35, 0.25)
+    var trim := _mat(Color(0.07, 0.07, 0.08))
+    _mesh_box(Vector3(0, 0.62, 0), Vector3(1.55, 0.55, 3.5), cm, body)
+    _mesh_box(Vector3(0, 0.95, -1.2), Vector3(1.5, 0.1, 1.0), cm, body)
+    _mesh_box(Vector3(0, 1.22, 0.3), Vector3(1.45, 0.62, 1.9), cm, body)
+    var ws := _mesh_box(Vector3(0, 1.22, -0.78), Vector3(1.38, 0.06, 0.8), _glass(), body, true)
+    _tilt(ws, 40.0)
+    var rw := _mesh_box(Vector3(0, 1.22, 1.35), Vector3(1.38, 0.06, 0.7), _glass(), body, true)
+    _tilt(rw, -40.0)
+    _mesh_box(Vector3(0, 1.26, 0.3), Vector3(1.485, 0.32, 1.6), _glass(), body, true)
+    _mesh_box(Vector3(0, 0.42, -1.76), Vector3(1.62, 0.22, 0.14), trim, body)
+    _mesh_box(Vector3(0, 0.42, 1.76), Vector3(1.62, 0.22, 0.14), trim, body)
+    _mesh_box(Vector3(0, 0.7, -1.76), Vector3(0.7, 0.14, 0.04), trim, body, true)
+    for sx in [-0.52, 0.52]:
+        _mesh_box(Vector3(sx, 0.76, -1.76), Vector3(0.3, 0.16, 0.05), _lamp(Color(0.95, 0.92, 0.75)), body, true)
+        _mesh_box(Vector3(sx, 0.78, 1.76), Vector3(0.26, 0.14, 0.05), _lamp(Color(0.8, 0.08, 0.06)), body, true)
+    _mesh_box(Vector3(0, 0.42, -1.84), Vector3(0.46, 0.12, 0.02), _mat(Color(0.9, 0.9, 0.85)), body, true)
+    for sx in [-0.78, 0.78]:
+        for sz in [-1.1, 1.1]:
+            _wheel(body, Vector3(sx, 0.31, sz), 0.31, 0.2)
 
 
 func _make_rickshaw(pos: Vector3, rot: float) -> void:
+    # Auto rickshaw: green body, yellow header, black hood. Front is -Z.
     var body := _vehicle_body(pos, Vector3(1.3, 2.0, 2.6), rot)
     var rick_c: Color = RICKSHAW_COLORS[rng.randi() % RICKSHAW_COLORS.size()]
+    var top_c := Color(0.86, 0.66, 0.06)
+    if rick_c.r > 0.5 and rick_c.g > 0.5:
+        top_c = Color(0.0, 0.33, 0.14)
     var cm := _tmat("metal_diff", rick_c, 0.6, rick_c)
-    _mesh_box(Vector3(0, 0.7, 0.1), Vector3(1.2, 0.8, 2.2), cm, body)
-    _mesh_box(Vector3(0, 1.5, 0.35), Vector3(1.15, 0.8, 1.6), cm, body)
-    _mesh_box(Vector3(0, 1.5, -0.46), Vector3(1.0, 0.5, 0.05), _mat(Color(0.06, 0.08, 0.1)), body, true)
-    _mesh_box(Vector3(0, 1.94, 0.2), Vector3(1.3, 0.08, 1.9), _mat(Color(0.05, 0.05, 0.05)), body)
-    _wheel(body, Vector3(0, 0.3, -1.0), 0.3, 0.2)
-    _wheel(body, Vector3(-0.6, 0.3, 0.7), 0.3, 0.2)
-    _wheel(body, Vector3(0.6, 0.3, 0.7), 0.3, 0.2)
+    var tm := _tmat("metal_diff", top_c, 0.6, top_c)
+    var black := _mat(Color(0.06, 0.06, 0.06))
+    var gray := _mat(Color(0.45, 0.45, 0.47))
+    _mesh_box(Vector3(0, 0.62, 0.15), Vector3(1.15, 0.62, 2.1), cm, body)
+    _mesh_box(Vector3(0, 0.78, -1.1), Vector3(0.85, 0.7, 0.5), cm, body)
+    _mesh_box(Vector3(0, 0.55, 0.15), Vector3(1.17, 0.06, 1.4), _mat(Color(0.1, 0.3, 0.8)), body, true)
+    var ws := _mesh_box(Vector3(0, 1.45, -0.98), Vector3(0.95, 0.75, 0.05), _glass(), body, true)
+    _tilt(ws, 18.0)
+    _mesh_box(Vector3(0, 1.95, -0.9), Vector3(1.05, 0.16, 0.45), tm, body)
+    _mesh_box(Vector3(0, 2.0, 0.3), Vector3(1.25, 0.08, 1.95), black, body)
+    for sx in [-0.56, 0.56]:
+        _mesh_box(Vector3(sx, 1.45, -0.8), Vector3(0.05, 1.0, 0.05), gray, body, true)
+        _mesh_box(Vector3(sx, 1.45, 1.1), Vector3(0.05, 1.0, 0.05), gray, body, true)
+    _mesh_box(Vector3(0, 1.45, 1.15), Vector3(1.15, 0.9, 0.04), _mat(Color(0.15, 0.15, 0.16)), body, true)
+    _mesh_box(Vector3(0, 1.0, 0.55), Vector3(0.95, 0.2, 0.5), _mat(Color(0.55, 0.08, 0.08)), body, true)
+    _mesh_box(Vector3(0, 1.28, 0.85), Vector3(0.95, 0.45, 0.1), black, body, true)
+    _mesh_box(Vector3(0, 0.64, -1.42), Vector3(0.5, 0.1, 0.7), black, body, true)
+    _mesh_box(Vector3(0, 0.88, -1.37), Vector3(0.22, 0.12, 0.05), _lamp(Color(0.95, 0.92, 0.75)), body, true)
+    _mesh_box(Vector3(0, 0.5, -1.38), Vector3(0.38, 0.18, 0.02), _mat(Color(0.95, 0.55, 0.05)), body, true)
+    _plate_label(body, Vector3(0, 0.95, 1.2), "CNG", true)
+    _wheel(body, Vector3(0, 0.3, -1.15), 0.3, 0.16)
+    _wheel(body, Vector3(-0.6, 0.3, 0.75), 0.3, 0.2)
+    _wheel(body, Vector3(0.6, 0.3, 0.75), 0.3, 0.2)
 
 
 func _make_bike(pos: Vector3, rot: float) -> void:
@@ -644,6 +727,51 @@ func _build_vehicles() -> void:
                         2:
                             _make_bike(pos, rot)
                 t += rng.randf_range(24.0, 42.0) / traffic
+
+
+# ---------------------------------------------------------------- hand carts
+
+func _build_carts() -> void:
+    var cloth := _mat(Color(0.7, 0.08, 0.08))
+    var wood := _mat(Color(0.35, 0.24, 0.14))
+    var fruit_cols := [Color(0.95, 0.75, 0.1), Color(0.9, 0.35, 0.1), Color(0.8, 0.1, 0.1), Color(0.35, 0.6, 0.15)]
+    for n in 8:
+        var c: float = lines[rng.randi() % lines.size()]
+        var along := rng.randf_range(-HALF + 12.0, HALF - 12.0)
+        if _near_road(along):
+            continue
+        var off := 5.6 if rng.randf() < 0.5 else -5.6
+        var x := c + off
+        var z := along
+        var rot := 0.0
+        if rng.randf() < 0.5:
+            x = along
+            z = c + off
+            rot = PI / 2.0
+        var root := Node3D.new()
+        root.position = Vector3(x, 0.16, z)
+        root.rotation.y = rot
+        add_child(root)
+        _mesh_box(Vector3(0, 0.85, 0), Vector3(0.9, 0.08, 1.6), wood, root)
+        _mesh_box(Vector3(0, 0.95, 0), Vector3(1.0, 0.04, 1.7), cloth, root, true)
+        for sx in [-0.45, 0.45]:
+            for sz in [-0.7, 0.7]:
+                _mesh_box(Vector3(sx, 0.42, sz), Vector3(0.06, 0.85, 0.06), wood, root, true)
+        for k in 14:
+            var f := MeshInstance3D.new()
+            var sm := SphereMesh.new()
+            sm.radius = 0.09
+            sm.height = 0.18
+            sm.radial_segments = 6
+            sm.rings = 3
+            sm.material = _mat(fruit_cols[rng.randi() % fruit_cols.size()])
+            f.mesh = sm
+            f.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+            f.position = Vector3(rng.randf_range(-0.38, 0.38), 1.06, rng.randf_range(-0.7, 0.7))
+            root.add_child(f)
+        _wheel(root, Vector3(-0.52, 0.3, 0.0), 0.3, 0.05)
+        _wheel(root, Vector3(0.52, 0.3, 0.0), 0.3, 0.05)
+        _solid(Vector3(x, 0.7, z), Vector3(1.1, 1.4, 1.8) if rot == 0.0 else Vector3(1.8, 1.4, 1.1))
 
 
 # ---------------------------------------------------------------- trash
