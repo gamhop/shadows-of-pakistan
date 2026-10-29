@@ -5,8 +5,8 @@ const RUN_SPEED := 9.5
 const GRAVITY := 20.0
 const STICK_RADIUS := 170.0
 const RUN_RADIUS := 110.0
-const PITCH_MIN := -1.25   # neeche dekhna (pao dikhte hain)
-const PITCH_MAX := 0.7     # upar dekhna
+const PITCH_MIN := -1.5    # neeche dekhna (pao dikhte hain)
+const PITCH_MAX := 0.95    # upar dekhna
 
 const Cities := preload("res://cities.gd")
 const CityScript := preload("res://city.gd")
@@ -132,6 +132,7 @@ func _ready() -> void:
     add_child(preload("res://settings_menu.gd").new())
     add_child(preload("res://build_label.gd").new())
     add_child(preload("res://audio.gd").new())
+    add_child(preload("res://touch_buttons.gd").new())
     add_child(preload("res://city_menu.gd").new())
     load_city(0)
 
@@ -322,7 +323,9 @@ func _physics_process(delta: float) -> void:
     if moving:
         var target := atan2(-dir.x, -dir.z)
         player.rotation.y = lerp_angle(player.rotation.y, target, 12.0 * delta)
-    cam_pivot.global_position = player.global_position + Vector3(0, 1.6, 0)
+    # neeche dekhte hue camera ka nishana sar se jism/pao ki taraf aata hai, upar dekhte hue sar ke upar
+    var pivot_h := 1.6 + clampf(cam_pitch, 0.0, 0.8) * 0.5 - clampf(-cam_pitch, 0.0, 1.2) * 0.6
+    cam_pivot.global_position = player.global_position + Vector3(0, pivot_h, 0)
 
 
 func _process(_delta: float) -> void:

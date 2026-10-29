@@ -157,7 +157,7 @@ func _process(delta: float) -> void:
         var back := recoil_off * clampf(7.0 * delta, 0.0, 1.0)
         recoil_off -= back
         var cp: float = main_node.get("cam_pitch")
-        main_node.set("cam_pitch", clampf(cp - back, -1.25, 0.7))
+        main_node.set("cam_pitch", clampf(cp - back, -1.5, 0.95))
     if muzzle_t > 0.0:
         muzzle_t -= delta
         if muzzle_t <= 0.0:
@@ -237,7 +237,7 @@ func _fire_feel(muzzle: Vector3) -> void:
     # recoil: camera kicks up a little, slightly sideways, then settles back
     var kick := rng.randf_range(0.010, 0.018)
     var cp: float = main_node.get("cam_pitch")
-    main_node.set("cam_pitch", clampf(cp + kick, -1.25, 0.7))
+    main_node.set("cam_pitch", clampf(cp + kick, -1.5, 0.95))
     recoil_off += kick
     var cy: float = main_node.get("cam_yaw")
     main_node.set("cam_yaw", cy + rng.randf_range(-0.004, 0.004))
