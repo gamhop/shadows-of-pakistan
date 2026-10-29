@@ -10,6 +10,7 @@ const SHOT_RANGE := 70.0
 const HEAD_MULT := 2.5
 const HEAD_MIN_Y := 1.5
 const MAX_HOLES := 24
+const AIM_Y := 0.2  # crosshair height on screen (0 = top, 0.5 = centre). Chhota = zyada upar
 
 var main_node: Node
 var ui: Control
@@ -107,7 +108,7 @@ func _fire_base() -> Vector2:
 
 func _draw_ui() -> void:
     var vp := get_viewport().get_visible_rect().size
-    var c := vp / 2.0
+    var c := Vector2(vp.x / 2.0, vp.y * AIM_Y)
     var cc := Color(1, 0.3, 0.3) if hit_t > 0.0 else Color(1, 1, 1, 0.9)
     if head_t > 0.0:
         cc = Color(1, 0.85, 0.1)
@@ -190,8 +191,10 @@ func _shoot() -> void:
     var player := main_node.get("player") as CharacterBody3D
     if cam == null or player == null:
         return
-    var from := cam.global_position
-    var dir := -cam.global_transform.basis.z
+    var vp := get_viewport().get_visible_rect().size
+    var aim := Vector2(vp.x / 2.0, vp.y * AIM_Y)
+    var from := cam.project_ray_origin(aim)
+    var dir := cam.project_ray_normal(aim)
     var to := from + dir * SHOT_RANGE
     var space := cam.get_world_3d().direct_space_state
     var q := PhysicsRayQueryParameters3D.create(from, to)
