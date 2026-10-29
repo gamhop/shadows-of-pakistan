@@ -9,6 +9,7 @@ const RUN_RADIUS := 110.0
 const Cities := preload("res://cities.gd")
 const CityScript := preload("res://city.gd")
 const AvatarScript := preload("res://avatar.gd")
+const ModelAvatarScript := preload("res://model_avatar.gd")
 
 const SKY_SHADER := """
 shader_type sky;
@@ -250,14 +251,19 @@ func _make_player() -> void:
     player.position = Vector3(0, 0.1, 0)
     add_child(player)
 
-    avatar = AvatarScript.new()
-    avatar.call("configure", {
-        "kameez": Color(0.88, 0.88, 0.82),
-        "shalwar": Color(0.88, 0.88, 0.82),
-        "skin": Color(0.78, 0.58, 0.44),
-        "headwear": 1,
-        "beard": true,
-    })
+    var ma := ModelAvatarScript.new()
+    if ma.call("setup"):
+        avatar = ma
+    else:
+        ma.free()
+        avatar = AvatarScript.new()
+        avatar.call("configure", {
+            "kameez": Color(0.88, 0.88, 0.82),
+            "shalwar": Color(0.88, 0.88, 0.82),
+            "skin": Color(0.78, 0.58, 0.44),
+            "headwear": 1,
+            "beard": true,
+        })
     player.add_child(avatar)
 
     var col := CollisionShape3D.new()
