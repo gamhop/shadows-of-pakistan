@@ -8,6 +8,7 @@ const MODEL_PATH := "res://assets/models/player.glb"
 const MODEL_HEIGHT := 0.9599      # GLB ki asli unchai
 const MODEL_FOOT := -0.4764       # GLB mein pairon ka y
 const TARGET_HEIGHT := 1.8        # game mein unchai (meter)
+const FLIP := false               # agar chehra ulti taraf ho to true karein
 
 const SHADER := """
 shader_type spatial;
@@ -108,7 +109,7 @@ func setup() -> bool:
     model = inst
     var s := TARGET_HEIGHT / MODEL_HEIGHT
     model.scale = Vector3.ONE * s
-    model.rotation.y = PI           # GLB ka chehra +Z par hai, game mein aage -Z hai
+    model.rotation.y = PI if FLIP else 0.0
     base_y = -MODEL_FOOT * s
     model.position.y = base_y
     pivot.add_child(model)
