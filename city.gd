@@ -266,7 +266,7 @@ func _shader_mat(code: String, color: Color) -> ShaderMaterial:
 
 
 func _plaza_mat() -> Material:
-    var m: Material = _pbr_mat("tile_2", 0.3, cfg["plaza"], 0.3)
+    var m: Material = _pbr_mat("tile_2", 0.3, cfg["plaza"], 0.12)
     if m == null:
         m = _shader_mat(TILE_SHADER, cfg["plaza"])
     return m
@@ -458,6 +458,12 @@ func _build_border_walls() -> void:
     mat.shader = building_shader
     mat.set_shader_parameter("base_color", cfg["wall"])
     mat.set_shader_parameter("half_h", 7.0)
+    var wall_t := _tex("concrete_3_diff")
+    if wall_t != null:
+        mat.set_shader_parameter("wall_tex", wall_t)
+        mat.set_shader_parameter("use_tex", 1.0)
+        mat.set_shader_parameter("tex_scale", 0.3)
+        mat.set_shader_parameter("tint", 0.5)
     var span := 2.0 * HALF + 4.0
     for s in [-1.0, 1.0]:
         var pz := Vector3(0, 7.0, s * (HALF + 1.0))

@@ -155,7 +155,7 @@ func _apply_theme(t: Dictionary) -> void:
     sky_mat.set_shader_parameter("top_color", t["sky_top"])
     sky_mat.set_shader_parameter("horizon_color", horizon)
     env.fog_light_color = horizon
-    env.fog_density = t["fog"]
+    env.fog_density = float(t["fog"]) * 0.7
     env.ambient_light_color = t["ambient"]
     sun.light_color = t["sun_color"]
     sun.rotation_degrees = t["sun_rot"]
@@ -180,7 +180,7 @@ func _make_world() -> void:
     env.sky = sky
     env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
     env.ambient_light_color = Color(0.45, 0.5, 0.6)
-    env.ambient_light_energy = 0.55
+    env.ambient_light_energy = 0.85
     env.ambient_light_sky_contribution = 0.35
     env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
     env.tonemap_white = 6.0
@@ -191,7 +191,7 @@ func _make_world() -> void:
     env.fog_light_color = horizon
     env.fog_density = 0.012
     env.fog_sun_scatter = 0.15
-    env.fog_aerial_perspective = 0.35
+    env.fog_aerial_perspective = 0.15
     env.fog_sky_affect = 0.6
     var we := WorldEnvironment.new()
     we.environment = env
