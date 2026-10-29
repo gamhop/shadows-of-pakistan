@@ -33,6 +33,11 @@ jobs:
           path: .godot
           key: godot-import-${{ hashFiles('project.godot', '**/*.png', '**/*.jpg', '**/*.glb', '**/*.gd', '**/*.tscn') }}
           restore-keys: godot-import-
+      - name: Set version code
+        run: |
+          sed -i "s|^version/code=.*|version/code=${GITHUB_RUN_NUMBER}|" export_presets.cfg
+          sed -i "s|^version/name=.*|version/name=\"0.1.${GITHUB_RUN_NUMBER}\"|" export_presets.cfg
+          grep -n "version/" export_presets.cfg
       - name: Build release APK
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -44,6 +49,24 @@ jobs:
           mkdir -v -p build/android
           godot --headless --verbose --editor --quit || true
           godot --headless --verbose --export-release "Android Release" build/android/shadows-of-pakistan.apk
+      - name: Align and sign APK
+        env:
+          KEYSTORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          APKSIGNER=$(find / -xdev -name apksigner -type f 2>/dev/null | head -n 1)
+          ZIPALIGN=$(find / -xdev -name zipalign -type f 2>/dev/null | head -n 1)
+          echo "apksigner: $APKSIGNER"
+          echo "zipalign: $ZIPALIGN"
+          test -n "$APKSIGNER" || { echo "apksigner not found"; exit 1; }
+          test -n "$ZIPALIGN" || { echo "zipalign not found"; exit 1; }
+          cd build/android
+          mv shadows-of-pakistan.apk raw.apk
+          "$ZIPALIGN" -p -f 4 raw.apk aligned.apk
+          "$APKSIGNER" sign --ks /tmp/release.keystore --ks-key-alias shadows --ks-pass env:KEYSTORE_PASS --key-pass env:KEYSTORE_PASS --out shadows-of-pakistan.apk aligned.apk
+          "$APKSIGNER" verify --verbose --print-certs shadows-of-pakistan.apk
+          "$ZIPALIGN" -c 4 shadows-of-pakistan.apk && echo "ALIGNMENT OK"
+          rm -f raw.apk aligned.apk *.idsig
       - name: Verify APK integrity
         run: |
           ls -l build/android/shadows-of-pakistan.apk
