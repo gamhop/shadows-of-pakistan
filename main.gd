@@ -104,6 +104,7 @@ var stick_touch := -1
 var look_touch := -1
 var run_touch := -1
 var run_on := false
+var driving := false
 var cam_yaw := 0.0
 var cam_pitch := -0.12
 var health := 100.0
@@ -116,6 +117,9 @@ var sun: DirectionalLight3D
 var ground_mat: ShaderMaterial
 var city: Node3D
 var survival: CanvasLayer
+var drive: CanvasLayer
+var traffic: Node
+var mission: CanvasLayer
 var combat: CanvasLayer
 var city_idx := 0
 var avatar: Node3D
@@ -126,6 +130,12 @@ func _ready() -> void:
     _make_player()
     survival = preload("res://survival.gd").new()
     add_child(survival)
+    drive = preload("res://drive.gd").new()
+    add_child(drive)
+    traffic = preload("res://traffic.gd").new()
+    add_child(traffic)
+    mission = preload("res://mission.gd").new()
+    add_child(mission)
     combat = preload("res://combat.gd").new()
     add_child(combat)
     _make_ui()
@@ -155,7 +165,9 @@ func load_city(idx: int) -> void:
     cam_pitch = -0.12
     var lines: Array = city.get("lines")
     survival.call("respawn", lines, int(t["seed"]) + 1)
+    traffic.call("respawn", city, lines, int(t["seed"]) + 4)
     combat.call("respawn", lines, int(t["seed"]) + 2)
+    mission.call("respawn", lines, int(t["seed"]) + 3)
     survival.call("_show_toast", str(t["name"]))
 
 
@@ -296,18 +308,12 @@ func _make_player() -> void:
 func _physics_process(delta: float) -> void:
     cam_pivot.rotation = Vector3(cam_pitch, cam_yaw, 0.0)
     var dir := Vector3(stick.x, 0.0, stick.y).rotated(Vector3.UP, cam_yaw)
+    if driving:
+        dir = Vector3.ZERO
     var moving := dir.length() > 0.1
     if not moving:
         run_on = false
-    var running := run_on and moving and not exhausted
-    if running:
-        stamina = maxf(stamina - 18.0 * delta, 0.0)
-        if stamina <= 0.0:
-            exhausted = true
-    else:
-        stamina = minf(stamina + 15.0 * delta, 100.0)
-        if exhausted and stamina >= 20.0:
-            exhausted = false
+    var running := run_on and moving
     var speed := RUN_SPEED if running else WALK_SPEED
     cam.fov = lerpf(cam.fov, 70.0 if running else 60.0, 6.0 * delta)
     player.velocity.x = dir.x * speed
@@ -364,9 +370,6 @@ func _draw_ui() -> void:
 
     ui.draw_rect(Rect2(140, 50, 500, 26), Color(0, 0, 0, 0.45))
     ui.draw_rect(Rect2(140, 50, 500.0 * health / 100.0, 26), Color(0.85, 0.15, 0.15))
-    var scol := Color(0.6, 0.5, 0.3) if exhausted else Color(0.95, 0.8, 0.2)
-    ui.draw_rect(Rect2(140, 88, 500, 20), Color(0, 0, 0, 0.45))
-    ui.draw_rect(Rect2(140, 88, 500.0 * stamina / 100.0, 20), scol)
 
 
 func _input(event: InputEvent) -> void:

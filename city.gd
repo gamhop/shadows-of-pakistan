@@ -11,6 +11,7 @@ const HALF := 105.0
 const PedScript := preload("res://ped.gd")
 
 const CAR_COLORS := [Color(0.9, 0.9, 0.9), Color(0.65, 0.66, 0.7), Color(0.08, 0.08, 0.1), Color(0.7, 0.12, 0.12), Color(0.15, 0.25, 0.6)]
+const VehicleScript := preload("res://vehicle.gd")
 const VEHICLE_MODELS := {
     "humvee": {"path": "res://assets/models/vehicle_humvee.glb", "scale": 1.0, "flip": false, "collider": Vector3(2.5, 2.2, 4.7)},
     "truck": {"path": "res://assets/models/vehicle_truck.glb", "scale": 0.37, "flip": true, "collider": Vector3(4.0, 3.3, 7.5)},
@@ -218,6 +219,7 @@ func _mat(color: Color) -> StandardMaterial3D:
 
 
 var tex_cache: Dictionary = {}
+var last_vehicle: Node3D
 
 
 func _tex(tname: String) -> Texture2D:
@@ -567,8 +569,10 @@ func _build_trees() -> void:
 
 # ---------------------------------------------------------------- vehicles
 
-func _vehicle_body(pos: Vector3, size: Vector3, rot: float) -> StaticBody3D:
-    var body := StaticBody3D.new()
+func _vehicle_body(pos: Vector3, size: Vector3, rot: float) -> CharacterBody3D:
+    var body := CharacterBody3D.new()
+    body.set_script(VehicleScript)
+    body.set_meta("size", size)
     body.position = pos
     body.rotation.y = rot
     var cs := CollisionShape3D.new()
@@ -578,6 +582,7 @@ func _vehicle_body(pos: Vector3, size: Vector3, rot: float) -> StaticBody3D:
     cs.position.y = size.y / 2.0
     body.add_child(cs)
     add_child(body)
+    last_vehicle = body
     return body
 
 
@@ -776,7 +781,7 @@ func _build_vehicles() -> void:
                         4:
                             if not _make_model_vehicle("truck", pos, rot):
                                 _make_car(pos, rot)
-                t += rng.randf_range(24.0, 42.0) / traffic
+                t += rng.randf_range(17.0, 30.0) / traffic
 
 
 # ---------------------------------------------------------------- hand carts
