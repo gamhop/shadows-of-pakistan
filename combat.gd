@@ -10,6 +10,8 @@ const SHOT_RANGE := 70.0
 const HEAD_MULT := 2.5
 const HEAD_MIN_Y := 1.5
 const MAX_HOLES := 24
+const FEET_START := -0.7   # itna neeche dekhne par crosshair paon ki taraf sarakna shuru
+const FEET_FULL := -1.35   # itna neeche dekhne par crosshair bilkul paon par
 const AIM_Y := 0.2  # crosshair height on screen (0 = top, 0.5 = centre). Chhota = zyada upar
 
 var main_node: Node
@@ -108,7 +110,7 @@ func _fire_base() -> Vector2:
 
 func _draw_ui() -> void:
     var vp := get_viewport().get_visible_rect().size
-    var c := Vector2(vp.x / 2.0, vp.y * AIM_Y)
+    var c := _aim_point()
     var cc := Color(1, 0.3, 0.3) if hit_t > 0.0 else Color(1, 1, 1, 0.9)
     if head_t > 0.0:
         cc = Color(1, 0.85, 0.1)
@@ -186,13 +188,30 @@ func _physics_process(delta: float) -> void:
             snd_click.play()
 
 
+func _aim_point() -> Vector2:
+    # Crosshair sar ke upar rehta hai, lekin camera neeche karne par dheere dheere
+    # aapke paon ki jagah aa jata hai, taaki paon ke paas wale dushman ko maar sakein.
+    var vp := get_viewport().get_visible_rect().size
+    var base := Vector2(vp.x / 2.0, vp.y * AIM_Y)
+    var cam := get_viewport().get_camera_3d()
+    var player := main_node.get("player") as CharacterBody3D
+    if cam == null or player == null:
+        return base
+    var pitch: float = main_node.get("cam_pitch")
+    var t := clampf((pitch - FEET_START) / (FEET_FULL - FEET_START), 0.0, 1.0)
+    if t <= 0.0:
+        return base
+    t = t * t * (3.0 - 2.0 * t)
+    var feet := cam.unproject_position(player.global_position + Vector3(0, 0.15, 0))
+    return base.lerp(feet, t)
+
+
 func _shoot() -> void:
     var cam := get_viewport().get_camera_3d()
     var player := main_node.get("player") as CharacterBody3D
     if cam == null or player == null:
         return
-    var vp := get_viewport().get_visible_rect().size
-    var aim := Vector2(vp.x / 2.0, vp.y * AIM_Y)
+    var aim := _aim_point()
     var from := cam.project_ray_origin(aim)
     var dir := cam.project_ray_normal(aim)
     var to := from + dir * SHOT_RANGE
