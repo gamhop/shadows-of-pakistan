@@ -11,6 +11,7 @@ const ATTACK_RANGE := 1.9
 const ATTACK_DAMAGE := 8.0
 const ATTACK_COOLDOWN := 1.0
 const MAX_HEALTH := 100.0
+const SoldierRig := preload("res://soldier_rig.gd")
 
 var health := MAX_HEALTH
 var dead := false
@@ -31,6 +32,7 @@ var bar_mesh: QuadMesh
 var body_mat: StandardMaterial3D
 var head_mat: StandardMaterial3D
 var body_mi: MeshInstance3D
+var rig: Node3D
 var knock := Vector3.ZERO
 var stagger := 0.0
 var flinch := 0.0
@@ -52,6 +54,34 @@ func _ready() -> void:
     col_shape.position.y = 1.0
     add_child(col_shape)
 
+    var r := SoldierRig.new()
+    if r.call("setup"):
+        rig = r
+        add_child(rig)
+    else:
+        r.free()
+        _build_primitives()
+
+    bar_bg = MeshInstance3D.new()
+    var bg_mesh := QuadMesh.new()
+    bg_mesh.size = Vector2(1.0, 0.12)
+    bg_mesh.material = _bar_mat(Color(0, 0, 0))
+    bar_bg.mesh = bg_mesh
+    bar_bg.position = Vector3(0, 2.65, 0)
+    bar_bg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    add_child(bar_bg)
+
+    bar_fg = MeshInstance3D.new()
+    bar_mesh = QuadMesh.new()
+    bar_mesh.material = _bar_mat(Color(0.9, 0.1, 0.1))
+    bar_fg.mesh = bar_mesh
+    bar_fg.position = Vector3(0, 2.65, 0)
+    bar_fg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    add_child(bar_fg)
+    _update_bar()
+
+
+func _build_primitives() -> void:
     var body := MeshInstance3D.new()
     var cap := CapsuleMesh.new()
     cap.radius = 0.4
@@ -83,24 +113,6 @@ func _ready() -> void:
     gun.mesh = gb
     gun.position = Vector3(0.3, 1.1, -0.45)
     add_child(gun)
-
-    bar_bg = MeshInstance3D.new()
-    var bg_mesh := QuadMesh.new()
-    bg_mesh.size = Vector2(1.0, 0.12)
-    bg_mesh.material = _bar_mat(Color(0, 0, 0))
-    bar_bg.mesh = bg_mesh
-    bar_bg.position = Vector3(0, 2.65, 0)
-    bar_bg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-    add_child(bar_bg)
-
-    bar_fg = MeshInstance3D.new()
-    bar_mesh = QuadMesh.new()
-    bar_mesh.material = _bar_mat(Color(0.9, 0.1, 0.1))
-    bar_fg.mesh = bar_mesh
-    bar_fg.position = Vector3(0, 2.65, 0)
-    bar_fg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-    add_child(bar_fg)
-    _update_bar()
 
 
 func _bar_mat(color: Color) -> StandardMaterial3D:
@@ -157,11 +169,14 @@ func take_damage(amount: float, hit_pos: Vector3 = Vector3.ZERO, hit_dir: Vector
     knock = push * (4.5 if head else 2.8)
     stagger = 0.25 if head else 0.12
     flinch = 1.0
-    var m: StandardMaterial3D = head_mat if head else body_mat
-    m.emission_enabled = true
-    m.emission = Color(1, 1, 1)
-    m.emission_energy_multiplier = 1.6
-    get_tree().create_timer(0.07).timeout.connect(_unflash.bind(m))
+    if rig:
+        rig.call("flash")
+    else:
+        var m: StandardMaterial3D = head_mat if head else body_mat
+        m.emission_enabled = true
+        m.emission = Color(1, 1, 1)
+        m.emission_energy_multiplier = 1.6
+        get_tree().create_timer(0.07).timeout.connect(_unflash.bind(m))
     if health > 0.0:
         _snd("e_hurt", 0.0)
     if health <= 0.0:
@@ -190,7 +205,10 @@ func _die() -> void:
     position.y += 0.4
     if was_head:
         velocity = Vector3.ZERO
-    body_mat.emission_enabled = false
+    if rig:
+        rig.call("stop")
+    elif body_mat:
+        body_mat.emission_enabled = false
     get_tree().create_timer(6.0).timeout.connect(queue_free)
 
 
@@ -263,3 +281,5 @@ func _physics_process(delta: float) -> void:
     else:
         velocity.y -= GRAVITY * delta
     move_and_slide()
+    if rig:
+        rig.call("animate", Vector2(velocity.x, velocity.z).length(), delta)
