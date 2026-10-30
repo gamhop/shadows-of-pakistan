@@ -11,6 +11,8 @@ const HEAD_MULT := 2.5
 const HEAD_MIN_Y := 1.5
 const MAX_HOLES := 24
 const AIM_Y := 0.2  # crosshair height on screen (0 = top, 0.5 = centre). Chhota = zyada upar
+const FEET_PITCH := -0.7   # itna neeche dekhne par paon-assist chalu
+const FEET_RADIUS := 2.0   # paon se itni doori tak ka dushman lagta hai
 
 var main_node: Node
 var ui: Control
@@ -205,6 +207,14 @@ func _shoot() -> void:
     var q := PhysicsRayQueryParameters3D.create(from, to)
     q.exclude = [player.get_rid()]
     var hit := space.intersect_ray(q)
+    # feet assist: crosshair se dushman na lage to paon ke paas wala dushman lag jata hai
+    var pitch_now: float = main_node.get("cam_pitch")
+    var ray_enemy: bool = not hit.is_empty() and hit["collider"] != null and hit["collider"].has_method("take_damage")
+    if pitch_now <= FEET_PITCH and not ray_enemy:
+        var fe := _feet_enemy(player)
+        if fe != null:
+            var fp: Vector3 = fe.global_position + Vector3(0, 0.9, 0)
+            hit = {"position": fp, "collider": fe, "normal": (from - fp).normalized()}
     var end := to
     var muzzle := player.global_position + Vector3(0, 1.4, 0) + dir * 0.7 + cam.global_transform.basis.x * 0.25
     if not hit.is_empty():
@@ -230,6 +240,26 @@ func _shoot() -> void:
             _bullet_hole(end, n)
     _tracer(muzzle, end)
     _fire_feel(muzzle)
+
+
+func _feet_enemy(player: Node3D) -> Node3D:
+    var yaw: float = main_node.get("cam_yaw")
+    var f := Vector3(0, 0, -1).rotated(Vector3.UP, yaw)
+    var best: Node3D = null
+    var best_d := FEET_RADIUS
+    for n in holder.get_children():
+        if not is_instance_valid(n) or not n.has_method("take_damage") or n.get("dead"):
+            continue
+        var to_e: Vector3 = n.global_position - player.global_position
+        to_e.y = 0.0
+        var d := to_e.length()
+        if d >= best_d:
+            continue
+        if d > 0.5 and f.dot(to_e / d) < 0.2:
+            continue
+        best_d = d
+        best = n
+    return best
 
 
 func _fire_feel(muzzle: Vector3) -> void:
