@@ -31,6 +31,19 @@ var plan_line := INF
 var plan_dir := Vector3.ZERO
 var done_line := INF
 
+var driver: Node3D = null
+var far_t := 0.0
+var sleeping := false
+
+var block_dist := INF
+var check_t := 0.0
+var scan_shape: BoxShape3D = null
+var blocked_by_player := false
+var stuck_t := 0.0
+var ignore_t := 0.0
+var honk_cd := 0.0
+var main_ref: Node = null
+
 
 func _ready() -> void:
     size = get_meta("size", size)
@@ -56,15 +69,32 @@ func _ready() -> void:
         accel = 7.0
         wheelbase = 2.9
     set_physics_process(false)
+    call_deferred("_cull")
+
+
+# door ki gaariyan dikhana band (FPS bachane ke liye)
+func _cull() -> void:
+    _cull_node(self)
+
+
+func _cull_node(n: Node) -> void:
+    var g := n as GeometryInstance3D
+    if g:
+        g.visibility_range_end = 170.0
+        g.visibility_range_end_margin = 6.0
+    for c in n.get_children():
+        _cull_node(c)
 
 
 func can_enter() -> bool:
-    if mode == Mode.PLAYER:
-        return false
-    return absf(speed) < 3.0
+    # chalti hui gaari mein bhi ghus sakte hain (driver ko bahar kheench kar)
+    return mode != Mode.PLAYER
 
 
 func take_control() -> void:
+    if driver and is_instance_valid(driver):
+        driver.queue_free()
+        driver = null
     mode = Mode.PLAYER
     throttle = 0.0
     steer = 0.0
@@ -85,11 +115,20 @@ func start_ai(dir: Vector3, road_c: float, line_list: Array, cruise: float, boun
     ai_cruise = cruise
     bound = bound_v
     speed = cruise * 0.5
+    _add_driver()
     set_physics_process(true)
 
 
 func _physics_process(delta: float) -> void:
     if mode == Mode.AI:
+        # bohot door ki gaariyan ruki rehti hain (CPU bachane ke liye)
+        far_t -= delta
+        if far_t <= 0.0:
+            far_t = 0.4
+            var cam := get_viewport().get_camera_3d()
+            sleeping = cam != null and cam.global_position.distance_to(global_position) > 190.0
+        if sleeping:
+            return
         _ai(delta)
         return
     if mode == Mode.PARKED:
@@ -196,16 +235,34 @@ func _ai(delta: float) -> void:
                 plan_line = INF
                 return
 
-    # saamne koi rukawat?
+    # saamne koi rukawat? (aap, dushman, log ya doosri gaari)
+    check_t -= delta
+    honk_cd = maxf(honk_cd - delta, 0.0)
+    ignore_t = maxf(ignore_t - delta, 0.0)
+    if check_t <= 0.0:
+        check_t = 0.1
+        _scan_ahead()
     var target := ai_cruise
-    var from := global_position + Vector3(0, 0.8, 0) + ai_dir * (size.z * 0.5 + 0.3)
-    var reach := 5.0 + speed
-    var q := PhysicsRayQueryParameters3D.create(from, from + ai_dir * reach)
-    q.exclude = [get_rid()]
-    var hit := get_world_3d().direct_space_state.intersect_ray(q)
-    if not hit.is_empty():
-        var d := from.distance_to(hit["position"])
-        target = 0.0 if d < 3.5 + speed * 0.5 else ai_cruise * 0.4
+    if ignore_t <= 0.0:
+        var stop_d := 3.0 + speed * 0.6
+        if block_dist < stop_d:
+            target = 0.0
+        elif block_dist < stop_d + 7.0:
+            target = ai_cruise * 0.4
+    # bahut der se phansi ho (aur wajah aap nahi) to thoda aage nikal jao
+    if target == 0.0 and speed < 0.3 and not blocked_by_player:
+        stuck_t += delta
+        if stuck_t > 8.0:
+            ignore_t = 3.0
+            stuck_t = 0.0
+    elif target > 0.0:
+        stuck_t = 0.0
+    # aap saamne hon aur gaari ruki ho to horn bajao
+    if blocked_by_player and speed < 0.5 and honk_cd <= 0.0 and size.x >= 1.0:
+        honk_cd = 5.0
+        var au := get_tree().get_first_node_in_group("audio")
+        if au:
+            au.call("play3d", "horn", global_position + Vector3(0, 1.2, 0), 0.0)
     var rate := accel if target > speed else brake
     speed = move_toward(speed, target, rate * delta)
 
@@ -220,3 +277,102 @@ func _ai(delta: float) -> void:
     pos += ai_dir * speed * delta
     global_position = pos
     rotation.y = lerp_angle(rotation.y, atan2(-ai_dir.x, -ai_dir.z), k)
+
+
+# ------------------------------------------------------------ driver (chalane wala)
+func _add_driver() -> void:
+    if driver != null:
+        return
+    driver = Node3D.new()
+    var shirts := [Color(0.88, 0.88, 0.82), Color(0.2, 0.3, 0.5), Color(0.5, 0.45, 0.35), Color(0.15, 0.15, 0.18), Color(0.55, 0.2, 0.2), Color(0.25, 0.4, 0.3)]
+    var skins := [Color(0.78, 0.58, 0.44), Color(0.68, 0.48, 0.36), Color(0.85, 0.66, 0.52)]
+    var torso := MeshInstance3D.new()
+    var cm := CapsuleMesh.new()
+    cm.radius = 0.2
+    cm.height = 0.75
+    var sm := StandardMaterial3D.new()
+    sm.albedo_color = shirts[randi() % shirts.size()]
+    sm.roughness = 1.0
+    cm.material = sm
+    torso.mesh = cm
+    driver.add_child(torso)
+    var head := MeshInstance3D.new()
+    var hm := SphereMesh.new()
+    hm.radius = 0.14
+    hm.height = 0.28
+    var km := StandardMaterial3D.new()
+    km.albedo_color = skins[randi() % skins.size()]
+    km.roughness = 1.0
+    hm.material = km
+    head.mesh = hm
+    head.position.y = 0.55
+    driver.add_child(head)
+    var seat := Vector3(0.45, 0.72, -0.15)
+    if size.x < 1.0:
+        seat = Vector3(0.0, 0.95, 0.1)
+    elif size.x < 1.5:
+        seat = Vector3(0.0, 0.95, -0.5)
+    elif size.z > 6.0:
+        seat = Vector3(0.95, 1.7, -2.6)
+    elif size.x > 2.3:
+        seat = Vector3(0.62, 1.1, -0.25)
+    driver.position = seat
+    add_child(driver)
+    _cull_node(driver)
+
+
+# Driver ko gaari se bahar kheench kar zameen par gira dena
+func eject_driver() -> bool:
+    if driver == null or not is_instance_valid(driver):
+        driver = null
+        return false
+    var d := driver
+    driver = null
+    var parent := get_parent()
+    var from := d.global_position
+    remove_child(d)
+    parent.add_child(d)
+    d.global_position = from
+    d.global_rotation = global_rotation
+    var out := global_position + global_transform.basis.x * (size.x * 0.5 + 0.9)
+    out.y = 0.25
+    var tw := d.create_tween()
+    tw.set_parallel(true)
+    tw.tween_property(d, "global_position", out, 0.4)
+    tw.tween_property(d, "rotation:x", -PI / 2.0, 0.4)
+    get_tree().create_timer(8.0).timeout.connect(d.queue_free)
+    return true
+
+
+# Saamne ki sadak dekho: pehle chaudai wala dibba aage bhej kar, phir aap ke liye alag jaanch
+func _scan_ahead() -> void:
+    block_dist = INF
+    blocked_by_player = false
+    var reach := minf(6.0 + absf(speed) * 1.3, 16.0)
+    if scan_shape == null:
+        scan_shape = BoxShape3D.new()
+        scan_shape.size = Vector3(minf(size.x, 1.7), 1.3, 0.5)
+    var front := global_position + Vector3(0, 0.95, 0) + ai_dir * (size.z * 0.5 + 0.3)
+    var p := PhysicsShapeQueryParameters3D.new()
+    p.shape = scan_shape
+    p.exclude = [get_rid()]
+    p.transform = Transform3D(global_transform.basis, front)
+    p.motion = ai_dir * reach
+    var res := get_world_3d().direct_space_state.cast_motion(p)
+    if res.size() >= 1 and res[0] < 1.0:
+        block_dist = res[0] * reach
+
+    # aap saamne khade hon (sadak ke beech mein bhi) to bhi gaari ruke
+    if main_ref == null:
+        main_ref = get_tree().current_scene
+    if main_ref and not bool(main_ref.get("driving")):
+        var pl := main_ref.get("player") as Node3D
+        if pl:
+            var rel := pl.global_position - global_position
+            var ahead := rel.dot(ai_dir)
+            var side := absf(rel.dot(Vector3.UP.cross(ai_dir)))
+            if ahead > size.z * 0.4 and ahead < reach + size.z * 0.5 and side < 2.6:
+                var d := maxf(ahead - size.z * 0.5, 0.0)
+                if d < block_dist:
+                    block_dist = d
+                    blocked_by_player = true

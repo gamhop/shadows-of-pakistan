@@ -11,6 +11,10 @@ var speed_label: Label
 var car: CharacterBody3D = null
 var near_car: CharacterBody3D = null
 var scan_t := 0.0
+var pad: Control
+var pad_touches: Dictionary = {}
+var steer_v := 0.0
+const PAD_R := 300.0
 
 
 func _ready() -> void:
@@ -20,6 +24,13 @@ func _ready() -> void:
     root.mouse_filter = Control.MOUSE_FILTER_IGNORE
     add_child(root)
     root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+
+    pad = Control.new()
+    pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    root.add_child(pad)
+    pad.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    pad.visible = false
+    pad.draw.connect(_draw_pad)
 
     btn = Button.new()
     btn.text = "ENTER"
@@ -100,6 +111,9 @@ func _find_near(player: Node3D) -> CharacterBody3D:
 
 
 func _process(delta: float) -> void:
+    pad.visible = car != null
+    if pad.visible:
+        pad.queue_redraw()
     if car != null and not is_instance_valid(car):
         _after_exit()
     var player := main_node.get("player") as Node3D
@@ -129,18 +143,29 @@ func _on_btn() -> void:
 
 func _enter(v: CharacterBody3D) -> void:
     car = v
+    var ejected = v.call("eject_driver")
     v.call("take_control")
     main_node.set("driving", true)
     _reset_main_input()
+    pad_touches.clear()
+    steer_v = 0.0
     var avatar := main_node.get("avatar") as Node3D
     if avatar:
-        avatar.visible = false
+        avatar.visible = true
+        avatar.position = _seat(v)
+    if ejected:
+        var au := get_tree().get_first_node_in_group("audio")
+        if au:
+            au.call("play2d", "punch", -2.0)
     _set_player_collision(false)
     var arm := _arm()
     if arm:
         arm.add_excluded_object(v.get_rid())
         arm.spring_length = 7.5
-    _toast("Stick: up = gas, down = brake, left/right = steer")
+    if ejected:
+        _toast("Driver ko bahar kheench liya!")
+    else:
+        _toast("Arrows: up = gas, down = brake, left/right = steer")
 
 
 func _exit() -> void:
@@ -161,9 +186,11 @@ func _after_exit() -> void:
     car = null
     main_node.set("driving", false)
     _reset_main_input()
+    pad_touches.clear()
     var avatar := main_node.get("avatar") as Node3D
     if avatar:
         avatar.visible = true
+        avatar.position = Vector3.ZERO
     _set_player_collision(true)
     var arm := _arm()
     if arm:
@@ -191,12 +218,12 @@ func _exit_spot(v: Node3D) -> Vector3:
 func _physics_process(delta: float) -> void:
     if car == null or not is_instance_valid(car):
         return
-    var st: Vector2 = main_node.get("stick")
-    var gas := -st.y
-    if absf(gas) < 0.12:
-        gas = 0.0
+    var s := _pad_state()
+    var gas := (1.0 if s["up"] else 0.0) - (1.0 if s["down"] else 0.0)
+    var steer_t := (1.0 if s["right"] else 0.0) - (1.0 if s["left"] else 0.0)
+    steer_v = move_toward(steer_v, steer_t, 5.0 * delta)
     car.set("throttle", gas)
-    car.set("steer", clampf(st.x * 1.3, -1.0, 1.0))
+    car.set("steer", steer_v)
 
     var player := main_node.get("player") as CharacterBody3D
     if player:
@@ -211,3 +238,84 @@ func _physics_process(delta: float) -> void:
         main_node.set("cam_yaw", lerp_angle(yaw, car.rotation.y, clampf(1.8 * delta, 0.0, 1.0)))
         var pitch: float = main_node.get("cam_pitch")
         main_node.set("cam_pitch", lerpf(pitch, -0.16, clampf(1.5 * delta, 0.0, 1.0)))
+
+
+# ------------------------------------------------------------ 4 arrows (gaari ke andar)
+func _base() -> Vector2:
+    return Vector2(300.0, get_viewport().get_visible_rect().size.y - 300.0)
+
+
+# Har ungli apna kaam alag karti hai, isliye ek arrow dabane se doosra block nahi hota.
+# Ek ungli se tircha (diagonal) dabane par do arrow ek saath chalte hain.
+func _pad_state() -> Dictionary:
+    var s := {"up": false, "down": false, "left": false, "right": false}
+    var c := _base()
+    for k in pad_touches:
+        var v: Vector2 = pad_touches[k] - c
+        if v.length() < 40.0:
+            continue
+        var n := v.normalized()
+        if -n.y > 0.42:
+            s["up"] = true
+        if n.y > 0.42:
+            s["down"] = true
+        if -n.x > 0.42:
+            s["left"] = true
+        if n.x > 0.42:
+            s["right"] = true
+    return s
+
+
+func _draw_pad() -> void:
+    var c := _base()
+    var s := _pad_state()
+    pad.draw_circle(c, PAD_R * 0.85, Color(1, 1, 1, 0.10))
+    _arrow(c + Vector2(0, -130), Vector2(0, -1), s["up"])
+    _arrow(c + Vector2(0, 130), Vector2(0, 1), s["down"])
+    _arrow(c + Vector2(-130, 0), Vector2(-1, 0), s["left"])
+    _arrow(c + Vector2(130, 0), Vector2(1, 0), s["right"])
+
+
+func _arrow(center: Vector2, dir: Vector2, pressed: bool) -> void:
+    var perp := Vector2(-dir.y, dir.x)
+    var pts := PackedVector2Array([
+        center + dir * 48.0,
+        center - dir * 30.0 + perp * 46.0,
+        center - dir * 30.0 - perp * 46.0,
+    ])
+    var col := Color(1.0, 0.6, 0.2, 0.85) if pressed else Color(1, 1, 1, 0.4)
+    pad.draw_colored_polygon(pts, col)
+
+
+func _input(event: InputEvent) -> void:
+    if car == null:
+        pad_touches.clear()
+        return
+    var t := event as InputEventScreenTouch
+    if t:
+        if t.pressed:
+            if t.position.distance_to(_base()) < PAD_R:
+                pad_touches[t.index] = t.position
+                get_viewport().set_input_as_handled()
+        elif pad_touches.has(t.index):
+            pad_touches.erase(t.index)
+            get_viewport().set_input_as_handled()
+        return
+    var dr := event as InputEventScreenDrag
+    if dr and pad_touches.has(dr.index):
+        pad_touches[dr.index] = dr.position
+        get_viewport().set_input_as_handled()
+
+
+# Gaari mein baithne ki jagah (player ka model neeche kiya jata hai taaki baitha hua lage)
+func _seat(v: Node3D) -> Vector3:
+    var sz: Vector3 = v.get("size")
+    if sz.x < 1.0:
+        return Vector3(0.0, -0.15, 0.1)
+    if sz.x < 1.5:
+        return Vector3(0.0, -0.35, -0.5)
+    if sz.z > 6.0:
+        return Vector3(0.95, 0.45, -2.6)
+    if sz.x > 2.3:
+        return Vector3(0.62, 0.0, -0.25)
+    return Vector3(0.45, -0.35, -0.15)

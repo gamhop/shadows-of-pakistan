@@ -126,6 +126,16 @@ func _process(delta: float) -> void:
     t_amb += delta
     amb[1].volume_db = -23.0 + 3.0 * sin(t_amb * 0.17)
     amb[2].volume_db = -31.0 + 6.0 * sin(t_amb * 0.29)
+    if bool(main_node.get("driving")):
+        var dv = main_node.get("drive")
+        var cv = dv.get("car") if dv else null
+        var sp := 0.0
+        if cv:
+            sp = absf(float(cv.get("speed")))
+        amb[2].volume_db = -13.0 + minf(sp, 15.0) * 0.25
+        amb[2].pitch_scale = 0.8 + minf(sp / 14.0, 1.6)
+    else:
+        amb[2].pitch_scale = 1.0
 
     var player := main_node.get("player") as CharacterBody3D
     if player:

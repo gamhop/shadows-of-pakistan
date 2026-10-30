@@ -604,7 +604,8 @@ func _glass() -> StandardMaterial3D:
     if mat_cache.has("glass"):
         return mat_cache["glass"]
     var m := StandardMaterial3D.new()
-    m.albedo_color = Color(0.07, 0.1, 0.13)
+    m.albedo_color = Color(0.07, 0.1, 0.13, 0.45)
+    m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
     m.roughness = 0.15
     m.metallic = 0.4
     mat_cache["glass"] = m

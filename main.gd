@@ -359,14 +359,16 @@ func _make_ui() -> void:
 
 
 func _draw_ui() -> void:
-    var c := _stick_base()
-    ui.draw_circle(c, STICK_RADIUS, Color(1, 1, 1, 0.15))
-    ui.draw_circle(c + stick * STICK_RADIUS, 70.0, Color(1, 1, 1, 0.5))
+    # gaari ke andar na joystick dikhta hai na RUN (wahan 4 arrows aate hain)
+    if not driving:
+        var c := _stick_base()
+        ui.draw_circle(c, STICK_RADIUS, Color(1, 1, 1, 0.15))
+        ui.draw_circle(c + stick * STICK_RADIUS, 70.0, Color(1, 1, 1, 0.5))
 
-    var r := _run_base()
-    var rcol := Color(1, 0.6, 0.2, 0.55) if run_on else Color(1, 1, 1, 0.2)
-    ui.draw_circle(r, RUN_RADIUS, rcol)
-    ui.draw_string(ThemeDB.fallback_font, r + Vector2(-100, 16), "RUN", HORIZONTAL_ALIGNMENT_CENTER, 200, 48)
+        var r := _run_base()
+        var rcol := Color(1, 0.6, 0.2, 0.55) if run_on else Color(1, 1, 1, 0.2)
+        ui.draw_circle(r, RUN_RADIUS, rcol)
+        ui.draw_string(ThemeDB.fallback_font, r + Vector2(-100, 16), "RUN", HORIZONTAL_ALIGNMENT_CENTER, 200, 48)
 
     ui.draw_rect(Rect2(140, 50, 500, 26), Color(0, 0, 0, 0.45))
     ui.draw_rect(Rect2(140, 50, 500.0 * health / 100.0, 26), Color(0.85, 0.15, 0.15))
@@ -377,10 +379,10 @@ func _input(event: InputEvent) -> void:
     if event is InputEventScreenTouch:
         var t := event as InputEventScreenTouch
         if t.pressed:
-            if stick_touch == -1 and t.position.distance_to(_stick_base()) < STICK_RADIUS * 1.8:
+            if stick_touch == -1 and not driving and t.position.distance_to(_stick_base()) < STICK_RADIUS * 1.8:
                 stick_touch = t.index
                 _update_stick(t.position)
-            elif run_touch == -1 and t.position.distance_to(_run_base()) < RUN_RADIUS * 1.4:
+            elif run_touch == -1 and not driving and t.position.distance_to(_run_base()) < RUN_RADIUS * 1.4:
                 run_on = not run_on
             elif look_touch == -1 and not _over_button(t.position):
                 look_touch = t.index

@@ -4,7 +4,8 @@ extends Node
 # main.gd load_city() mein respawn(city, lines, seed) bulata hai.
 
 const VehicleScript := preload("res://vehicle.gd")
-const AI_COUNT := 16
+const AI_COUNT := 24
+const CONVERT_SHARE := 0.7   # khari gaariyon mein se itni chalne lagti hain
 
 var main_node: Node
 
@@ -53,13 +54,56 @@ func respawn(city: Node, lines: Array, seed_v: int) -> void:
             continue
         var rot := atan2(-dir.x, -dir.z)
         var before = city.get("last_vehicle")
-        if rng.randf() < 0.35:
-            city.call("_make_rickshaw", pos, rot)
-        else:
+        var roll := rng.randf()
+        var cruise := rng.randf_range(7.0, 11.0)
+        if roll < 0.35:
             city.call("_make_car", pos, rot)
+        elif roll < 0.55:
+            city.call("_make_rickshaw", pos, rot)
+            cruise = rng.randf_range(5.0, 8.0)
+        elif roll < 0.88:
+            city.call("_make_bike", pos, rot)
+            cruise = rng.randf_range(9.0, 13.0)
+        else:
+            if not city.call("_make_model_vehicle", "humvee", pos, rot):
+                city.call("_make_car", pos, rot)
+            cruise = rng.randf_range(7.0, 10.0)
         var v = city.get("last_vehicle")
         if v == null or v == before:
             continue
-        v.call("start_ai", dir, c, lines, rng.randf_range(6.5, 10.0), bound)
+        v.call("start_ai", dir, c, lines, cruise, bound)
         used.append(pos)
         made += 1
+    _convert_parked(lines, bound, rng)
+
+
+# Sadak ke kinare khari gaariyon mein se zyada-tar ko chalane wala mil jata hai
+func _convert_parked(lines: Array, bound: float, rng: RandomNumberGenerator) -> void:
+    for n in get_tree().get_nodes_in_group("vehicles"):
+        var v := n as CharacterBody3D
+        if v == null or int(v.get("mode")) != 0:
+            continue
+        if rng.randf() > CONVERT_SHARE:
+            continue
+        var fwd := -v.global_transform.basis.z
+        var is_z := absf(fwd.z) > absf(fwd.x)
+        var dir := Vector3(0, 0, signf(fwd.z)) if is_z else Vector3(signf(fwd.x), 0, 0)
+        var a := v.global_position.x if is_z else v.global_position.z
+        var best := INF
+        var road_c := 0.0
+        for l in lines:
+            var lf: float = l
+            if absf(a - lf) < best:
+                best = absf(a - lf)
+                road_c = lf
+        if best > 8.5:
+            continue
+        var sz: Vector3 = v.get("size")
+        var cruise := rng.randf_range(7.0, 11.0)
+        if sz.x < 1.0:
+            cruise = rng.randf_range(9.0, 13.0)
+        elif sz.x < 1.5:
+            cruise = rng.randf_range(5.0, 8.0)
+        elif sz.z > 6.0:
+            cruise = rng.randf_range(5.0, 7.0)
+        v.call("start_ai", dir, road_c, lines, cruise, bound)
