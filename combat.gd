@@ -124,12 +124,13 @@ func _draw_ui() -> void:
     ui.draw_line(c + Vector2(0, -22), c + Vector2(0, -8), cc, 3.0)
     ui.draw_line(c + Vector2(0, 8), c + Vector2(0, 22), cc, 3.0)
 
-    var fb := _fire_base()
-    var fcol := Color(0.9, 0.2, 0.2, 0.55) if fire_touch != -1 else Color(1, 1, 1, 0.2)
-    ui.draw_circle(fb, 120.0, fcol)
-    ui.draw_string(ThemeDB.fallback_font, fb + Vector2(-100, 16), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 200, 44)
-    var ammo_text := "RELOADING" if reload_left > 0.0 else "AMMO " + str(ammo)
-    ui.draw_string(ThemeDB.fallback_font, fb + Vector2(-140, -140), ammo_text, HORIZONTAL_ALIGNMENT_CENTER, 280, 36)
+    if not bool(main_node.get("driving")):
+        var fb := _fire_base()
+        var fcol := Color(0.9, 0.2, 0.2, 0.55) if fire_touch != -1 else Color(1, 1, 1, 0.2)
+        ui.draw_circle(fb, 120.0, fcol)
+        ui.draw_string(ThemeDB.fallback_font, fb + Vector2(-100, 16), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 200, 44)
+        var ammo_text := "RELOADING" if reload_left > 0.0 else "AMMO " + str(ammo)
+        ui.draw_string(ThemeDB.fallback_font, fb + Vector2(-140, -140), ammo_text, HORIZONTAL_ALIGNMENT_CENTER, 280, 36)
     ui.draw_string(ThemeDB.fallback_font, Vector2(vp.x / 2.0 - 220, 130), "Kills: %d   Enemies: %d" % [kills, alive], HORIZONTAL_ALIGNMENT_CENTER, 440, 38)
     if flash_t > 0.0:
         ui.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.8, 0.0, 0.0, flash_t))
@@ -137,6 +138,9 @@ func _draw_ui() -> void:
 
 func _input(event: InputEvent) -> void:
     if get_tree().paused:
+        return
+    if bool(main_node.get("driving")):
+        fire_touch = -1
         return
     if event is InputEventScreenTouch:
         var t := event as InputEventScreenTouch

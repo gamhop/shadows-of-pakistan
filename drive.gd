@@ -1,7 +1,7 @@
 extends CanvasLayer
 
 # ENTER / EXIT button, gaari chalane ka control aur speed dikhana.
-# Chalate waqt: stick upar = gas, neeche = brake / reverse, daen baen = steering.
+# Chalate waqt: bayen angoothe se LEFT/RIGHT, daayen se GAS/BRAKE (alag alag ungli).
 
 const NEAR_DIST := 2.2
 
@@ -165,7 +165,7 @@ func _enter(v: CharacterBody3D) -> void:
     if ejected:
         _toast("Driver ko bahar kheench liya!")
     else:
-        _toast("Arrows: up = gas, down = brake, left/right = steer")
+        _toast("Left thumb: steer   Right thumb: gas / brake")
 
 
 func _exit() -> void:
@@ -240,40 +240,56 @@ func _physics_process(delta: float) -> void:
         main_node.set("cam_pitch", lerpf(pitch, -0.16, clampf(1.5 * delta, 0.0, 1.0)))
 
 
-# ------------------------------------------------------------ 4 arrows (gaari ke andar)
-func _base() -> Vector2:
-    return Vector2(300.0, get_viewport().get_visible_rect().size.y - 300.0)
+# ------------------------------------------------------------ do-angoothe controls (gaari ke andar)
+# Bayen angoothe se: LEFT / RIGHT (mudna). Daayen angoothe se: GAS / BRAKE.
+# Har ungli alag sunni jati hai, isliye mudte hue gas bhi dabi rehti hai.
+func _zones() -> Dictionary:
+    var vp := get_viewport().get_visible_rect().size
+    return {
+        "left": Rect2(50.0, vp.y - 350.0, 290.0, 300.0),
+        "right": Rect2(340.0, vp.y - 350.0, 290.0, 300.0),
+        "up": Rect2(vp.x - 400.0, vp.y - 400.0, 340.0, 350.0),
+        "down": Rect2(vp.x - 740.0, vp.y - 330.0, 310.0, 280.0),
+    }
 
 
-# Har ungli apna kaam alag karti hai, isliye ek arrow dabane se doosra block nahi hota.
-# Ek ungli se tircha (diagonal) dabane par do arrow ek saath chalte hain.
+func _in_pad(pos: Vector2) -> bool:
+    var z := _zones()
+    for k in z:
+        var r: Rect2 = z[k]
+        if r.has_point(pos):
+            return true
+    return false
+
+
 func _pad_state() -> Dictionary:
     var s := {"up": false, "down": false, "left": false, "right": false}
-    var c := _base()
-    for k in pad_touches:
-        var v: Vector2 = pad_touches[k] - c
-        if v.length() < 40.0:
-            continue
-        var n := v.normalized()
-        if -n.y > 0.42:
-            s["up"] = true
-        if n.y > 0.42:
-            s["down"] = true
-        if -n.x > 0.42:
-            s["left"] = true
-        if n.x > 0.42:
-            s["right"] = true
+    var z := _zones()
+    for t in pad_touches:
+        var pos: Vector2 = pad_touches[t]
+        for k in z:
+            var r: Rect2 = z[k]
+            if r.has_point(pos):
+                s[k] = true
     return s
 
 
 func _draw_pad() -> void:
-    var c := _base()
     var s := _pad_state()
-    pad.draw_circle(c, PAD_R * 0.85, Color(1, 1, 1, 0.10))
-    _arrow(c + Vector2(0, -130), Vector2(0, -1), s["up"])
-    _arrow(c + Vector2(0, 130), Vector2(0, 1), s["down"])
-    _arrow(c + Vector2(-130, 0), Vector2(-1, 0), s["left"])
-    _arrow(c + Vector2(130, 0), Vector2(1, 0), s["right"])
+    var z := _zones()
+    var dirs := {"up": Vector2(0, -1), "down": Vector2(0, 1), "left": Vector2(-1, 0), "right": Vector2(1, 0)}
+    for k in z:
+        var r: Rect2 = z[k]
+        var on: bool = s[k]
+        var col := Color(1.0, 0.6, 0.2, 0.5) if on else Color(1, 1, 1, 0.14)
+        pad.draw_rect(r.grow(-5.0), col)
+        var d: Vector2 = dirs[k]
+        _arrow(r.get_center(), d, on)
+    var font := ThemeDB.fallback_font
+    var up_r: Rect2 = z["up"]
+    var dn_r: Rect2 = z["down"]
+    pad.draw_string(font, Vector2(up_r.position.x, up_r.position.y + 58.0), "GAS", HORIZONTAL_ALIGNMENT_CENTER, up_r.size.x, 40)
+    pad.draw_string(font, Vector2(dn_r.position.x, dn_r.position.y + 58.0), "BRAKE", HORIZONTAL_ALIGNMENT_CENTER, dn_r.size.x, 40)
 
 
 func _arrow(center: Vector2, dir: Vector2, pressed: bool) -> void:
@@ -283,7 +299,7 @@ func _arrow(center: Vector2, dir: Vector2, pressed: bool) -> void:
         center - dir * 30.0 + perp * 46.0,
         center - dir * 30.0 - perp * 46.0,
     ])
-    var col := Color(1.0, 0.6, 0.2, 0.85) if pressed else Color(1, 1, 1, 0.4)
+    var col := Color(1.0, 0.6, 0.2, 0.95) if pressed else Color(1, 1, 1, 0.5)
     pad.draw_colored_polygon(pts, col)
 
 
@@ -294,7 +310,7 @@ func _input(event: InputEvent) -> void:
     var t := event as InputEventScreenTouch
     if t:
         if t.pressed:
-            if t.position.distance_to(_base()) < PAD_R:
+            if _in_pad(t.position):
                 pad_touches[t.index] = t.position
                 get_viewport().set_input_as_handled()
         elif pad_touches.has(t.index):
