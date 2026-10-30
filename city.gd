@@ -13,7 +13,7 @@ const PedScript := preload("res://ped.gd")
 const CAR_COLORS := [Color(0.9, 0.9, 0.9), Color(0.65, 0.66, 0.7), Color(0.08, 0.08, 0.1), Color(0.7, 0.12, 0.12), Color(0.15, 0.25, 0.6)]
 const VehicleScript := preload("res://vehicle.gd")
 const VEHICLE_MODELS := {
-    "humvee": {"path": "res://assets/models/vehicle_humvee.glb", "scale": 1.0, "flip": false, "collider": Vector3(2.5, 2.2, 4.7)},
+    "humvee": {"path": "res://assets/models/vehicle_humvee.glb", "scale": 1.0, "flip": true, "collider": Vector3(2.5, 2.2, 4.7)},
     "truck": {"path": "res://assets/models/vehicle_truck.glb", "scale": 0.37, "flip": true, "collider": Vector3(4.0, 3.3, 7.5)},
 }
 const RICKSHAW_COLORS := [Color(0.95, 0.8, 0.1), Color(0.1, 0.5, 0.2), Color(0.15, 0.3, 0.7)]

@@ -46,6 +46,7 @@ var main_ref: Node = null
 
 
 func _ready() -> void:
+    set_process(false)
     size = get_meta("size", size)
     add_to_group("vehicles")
     if size.x < 1.0:
@@ -117,6 +118,7 @@ func start_ai(dir: Vector3, road_c: float, line_list: Array, cruise: float, boun
     speed = cruise * 0.5
     _add_driver()
     set_physics_process(true)
+    set_process(true)
 
 
 func _physics_process(delta: float) -> void:
@@ -129,7 +131,11 @@ func _physics_process(delta: float) -> void:
             sleeping = cam != null and cam.global_position.distance_to(global_position) > 190.0
         if sleeping:
             return
-        _ai(delta)
+        # rukawat ki jaanch physics tick mein (har 0.1 sec), harkat _process mein
+        check_t -= delta
+        if check_t <= 0.0:
+            check_t = 0.1
+            _scan_ahead()
         return
     if mode == Mode.PARKED:
         return
@@ -138,6 +144,13 @@ func _physics_process(delta: float) -> void:
         speed = 0.0
         mode = Mode.PARKED
         set_physics_process(false)
+
+
+# AI gaariyan har frame par chalti hain (60Hz physics par chalane se jhatke lagte the)
+func _process(delta: float) -> void:
+    if mode != Mode.AI or sleeping:
+        return
+    _ai(minf(delta, 0.05))
 
 
 # ------------------------------------------------------------ player / coasting
@@ -228,27 +241,22 @@ func _ai(delta: float) -> void:
         else:
             var lane2 := Vector3.UP.cross(plan_dir) * LANE
             var trig := plan_line + (lane2.z if is_z else lane2.x)
-            if (a - trig) * da >= 0.0:
+            var lead := 2.0 if plan_dir.dot(Vector3.UP.cross(ai_dir)) > 0.5 else 4.0
+            if (a - trig) * da >= -lead:
                 done_line = road
                 road = plan_line
                 ai_dir = plan_dir
                 plan_line = INF
                 return
 
-    # saamne koi rukawat? (aap, dushman, log ya doosri gaari)
-    check_t -= delta
+    # saamne koi rukawat? (aap, dushman, log ya doosri gaari) - _scan_ahead se
     honk_cd = maxf(honk_cd - delta, 0.0)
     ignore_t = maxf(ignore_t - delta, 0.0)
-    if check_t <= 0.0:
-        check_t = 0.1
-        _scan_ahead()
     var target := ai_cruise
-    if ignore_t <= 0.0:
+    if ignore_t <= 0.0 and block_dist < INF:
+        # rukawat jitni kareeb, utni dheemi (achanak brake nahi)
         var stop_d := 3.0 + speed * 0.6
-        if block_dist < stop_d:
-            target = 0.0
-        elif block_dist < stop_d + 7.0:
-            target = ai_cruise * 0.4
+        target = ai_cruise * clampf((block_dist - stop_d) / 8.0, 0.0, 1.0)
     # bahut der se phansi ho (aur wajah aap nahi) to thoda aage nikal jao
     if target == 0.0 and speed < 0.3 and not blocked_by_player:
         stuck_t += delta
@@ -263,20 +271,22 @@ func _ai(delta: float) -> void:
         var au := get_tree().get_first_node_in_group("audio")
         if au:
             au.call("play3d", "horn", global_position + Vector3(0, 1.2, 0), 0.0)
-    var rate := accel if target > speed else brake
-    speed = move_toward(speed, target, rate * delta)
 
-    # apni lane mein rehna (baen taraf ki traffic)
+    # apni lane ki taraf narmi se mudna (steering), achanak nahi
     var lane := Vector3.UP.cross(ai_dir) * LANE
-    var pos := global_position
-    var k := clampf(6.0 * delta, 0.0, 1.0)
-    if is_z:
-        pos.x = lerpf(pos.x, road + lane.x, k)
-    else:
-        pos.z = lerpf(pos.z, road + lane.z, k)
-    pos += ai_dir * speed * delta
-    global_position = pos
-    rotation.y = lerp_angle(rotation.y, atan2(-ai_dir.x, -ai_dir.z), k)
+    var lat_vec := Vector3(1, 0, 0) if is_z else Vector3(0, 0, 1)
+    var err := (road + lane.x - global_position.x) if is_z else (road + lane.z - global_position.z)
+    var want := (ai_dir + lat_vec * clampf(err * 0.35, -0.6, 0.6)).normalized()
+    var want_yaw := atan2(-want.x, -want.z)
+    var diff := angle_difference(rotation.y, want_yaw)
+    var turn_rate := 2.2 if size.x >= 1.0 else 3.0
+    rotation.y += clampf(diff, -turn_rate * delta, turn_rate * delta)
+    # mudte waqt dheemi
+    target *= clampf(1.0 - absf(diff) / 1.4, 0.35, 1.0)
+    var rate := accel if target > speed else minf(brake, 14.0)
+    speed = move_toward(speed, target, rate * delta)
+    var fwd := -global_transform.basis.z
+    global_position += fwd * speed * delta
 
 
 # ------------------------------------------------------------ driver (chalane wala)
@@ -352,12 +362,13 @@ func _scan_ahead() -> void:
     if scan_shape == null:
         scan_shape = BoxShape3D.new()
         scan_shape.size = Vector3(minf(size.x, 1.7), 1.3, 0.5)
-    var front := global_position + Vector3(0, 0.95, 0) + ai_dir * (size.z * 0.5 + 0.3)
+    var fwd := -global_transform.basis.z
+    var front := global_position + Vector3(0, 0.95, 0) + fwd * (size.z * 0.5 + 0.3)
     var p := PhysicsShapeQueryParameters3D.new()
     p.shape = scan_shape
     p.exclude = [get_rid()]
     p.transform = Transform3D(global_transform.basis, front)
-    p.motion = ai_dir * reach
+    p.motion = fwd * reach
     var res := get_world_3d().direct_space_state.cast_motion(p)
     if res.size() >= 1 and res[0] < 1.0:
         block_dist = res[0] * reach
@@ -369,8 +380,8 @@ func _scan_ahead() -> void:
         var pl := main_ref.get("player") as Node3D
         if pl:
             var rel := pl.global_position - global_position
-            var ahead := rel.dot(ai_dir)
-            var side := absf(rel.dot(Vector3.UP.cross(ai_dir)))
+            var ahead := rel.dot(fwd)
+            var side := absf(rel.dot(Vector3.UP.cross(fwd)))
             if ahead > size.z * 0.4 and ahead < reach + size.z * 0.5 and side < 2.6:
                 var d := maxf(ahead - size.z * 0.5, 0.0)
                 if d < block_dist:
