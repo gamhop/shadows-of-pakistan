@@ -120,6 +120,8 @@ var survival: CanvasLayer
 var drive: CanvasLayer
 var traffic: Node
 var mission: CanvasLayer
+var economy: CanvasLayer
+var showroom: CanvasLayer
 var combat: CanvasLayer
 var city_idx := 0
 var avatar: Node3D
@@ -134,6 +136,10 @@ func _ready() -> void:
     add_child(drive)
     traffic = preload("res://traffic.gd").new()
     add_child(traffic)
+    economy = preload("res://economy.gd").new()
+    add_child(economy)
+    showroom = preload("res://showroom.gd").new()
+    add_child(showroom)
     mission = preload("res://mission.gd").new()
     add_child(mission)
     combat = preload("res://combat.gd").new()
@@ -168,6 +174,7 @@ func load_city(idx: int) -> void:
     traffic.call("respawn", city, lines, int(t["seed"]) + 4)
     combat.call("respawn", lines, int(t["seed"]) + 2)
     mission.call("respawn", lines, int(t["seed"]) + 3)
+    showroom.call("respawn", city, lines)
     survival.call("_show_toast", str(t["name"]))
 
 

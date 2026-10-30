@@ -1,40 +1,109 @@
 extends CanvasLayer
 
-const NEED_WATER := 3
-const NEED_FOOD := 2
-const KILL_GOAL := 3
-const TIME_LIMIT := 480.0
+# Level wale missions. Har level ka mission-type badalta hai (supply, hunt, deliver, race)
+# aur har 4 level ke baad mushkil badhti hai: ROOKIE -> PRO -> ELITE.
+# Mission poora karne par paisa milta hai (economy.gd) aur agla level khulta hai.
+
 const DOOR_RANGE := 4.0
+const POINT_RANGE := 7.0
+const TYPES := ["supply", "hunt", "deliver", "race"]
+const TIERS := ["ROOKIE", "PRO", "ELITE"]
 
 var main_node: Node
 var ui: Control
 var holder: Node3D
 var door: StaticBody3D
+var door_home := Vector3.ZERO
+var shelter_beam: MeshInstance3D
+var point_beam: MeshInstance3D
+var lines: Array = []
+var shelter_pos := Vector3.ZERO
 var target := Vector3.ZERO
+var show_arrow := false
 var action_btn: Button
+var start_btn: Button
 var end_menu: Control
 var end_title: Label
 var end_info: Label
-var continue_btn: Button
-var step := 0
-var time_left := TIME_LIMIT
-var start_kills := 0
+var next_btn: Button
+var free_btn: Button
+var retry_btn: Button
+var level := 1
+var m: Dictionary = {}
+var active := false
 var finished := false
+var step := 0
+var time_left := 0.0
+var start_kills := 0
 var need_combat := false
+var points: Array = []
+var point_i := 0
+var refill_t := 0.0
+var rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
     process_mode = Node.PROCESS_MODE_ALWAYS
     layer = 12
     main_node = get_parent()
+    rng.randomize()
     _build_ui()
 
 
+func _eco() -> Node:
+    return main_node.get("economy") as Node
+
+
+func _current_level() -> int:
+    var e := _eco()
+    return int(e.get("level")) if e else 1
+
+
+# ------------------------------------------------------------ mission definitions
+
+func _make_mission(lv: int) -> Dictionary:
+    var tier := (lv - 1) / 4
+    var d := {"level": lv, "type": TYPES[(lv - 1) % 4], "tier": tier}
+    d["tier_name"] = TIERS[mini(tier, TIERS.size() - 1)]
+    d["reward"] = 1000 + 800 * lv
+    match str(d["type"]):
+        "supply":
+            d["title"] = "Safe House"
+            d["water"] = mini(3 + tier, 7)
+            d["food"] = mini(2 + tier, 5)
+            d["kills"] = mini(3 + tier * 2, 9)
+            d["time"] = 480.0
+        "hunt":
+            d["title"] = "Clean Sweep"
+            d["kills"] = mini(5 + tier * 2, 14)
+            d["time"] = 300.0
+        "deliver":
+            d["title"] = "Delivery"
+            d["legs"] = mini(2 + tier, 5)
+            d["time"] = float(maxi(170 - tier * 15, 100)) + 30.0 * float(mini(tier, 3))
+        "race":
+            d["title"] = "Checkpoint Rush"
+            d["legs"] = mini(4 + tier * 2, 10)
+            d["time"] = float(mini(4 + tier * 2, 10) * maxi(30 - tier * 3, 18))
+    return d
+
+
+func _pick_point(avoid: Vector3, min_d: float) -> Vector3:
+    for t in 60:
+        var x: float = lines[rng.randi() % lines.size()]
+        var z: float = lines[rng.randi() % lines.size()]
+        if Vector2(x - avoid.x, z - avoid.z).length() >= min_d:
+            return Vector3(x, 0.0, z)
+    return Vector3(lines[0], 0.0, lines[lines.size() - 1])
+
+
+# ------------------------------------------------------------ world
+
 func _mat(color: Color) -> StandardMaterial3D:
-    var m := StandardMaterial3D.new()
-    m.albedo_color = color
-    m.roughness = 1.0
-    return m
+    var mt := StandardMaterial3D.new()
+    mt.albedo_color = color
+    mt.roughness = 1.0
+    return mt
 
 
 func _solid_box(pos: Vector3, size: Vector3, mat: Material) -> StaticBody3D:
@@ -55,7 +124,27 @@ func _solid_box(pos: Vector3, size: Vector3, mat: Material) -> StaticBody3D:
     return body
 
 
-func respawn(lines: Array, _seed_v: int) -> void:
+func _make_beam(color: Color) -> MeshInstance3D:
+    var beam := MeshInstance3D.new()
+    var cm := CylinderMesh.new()
+    cm.top_radius = 0.5
+    cm.bottom_radius = 0.5
+    cm.height = 60.0
+    cm.radial_segments = 12
+    var bmat := StandardMaterial3D.new()
+    bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+    bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+    bmat.albedo_color = color
+    cm.material = bmat
+    beam.mesh = cm
+    beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+    holder.add_child(beam)
+    return beam
+
+
+func respawn(line_list: Array, seed_v: int) -> void:
+    lines = line_list
+    rng.seed = seed_v + int(Time.get_ticks_msec())
     if holder and is_instance_valid(holder):
         if holder.get_parent():
             holder.get_parent().remove_child(holder)
@@ -63,17 +152,12 @@ func respawn(lines: Array, _seed_v: int) -> void:
     holder = Node3D.new()
     var cx: float = lines[0]
     var cz: float = lines[1] if lines.size() > 1 else lines[0]
-    target = Vector3(cx, 0.0, cz + 2.0)
-    _build_shelter(Vector3(cx, 0.0, cz))
+    shelter_pos = Vector3(cx, 0.0, cz)
+    _build_shelter(shelter_pos)
+    point_beam = _make_beam(Color(0.2, 0.9, 1.0, 0.3))
+    point_beam.visible = false
     main_node.add_child.call_deferred(holder)
-    step = 0
-    time_left = TIME_LIMIT
-    finished = false
-    var combat = main_node.get("combat")
-    need_combat = combat != null
-    start_kills = int(combat.get("kills")) if need_combat else 0
-    end_menu.visible = false
-    action_btn.visible = false
+    start_mission(_current_level(), false)
 
 
 func _build_shelter(pos: Vector3) -> void:
@@ -87,6 +171,7 @@ func _build_shelter(pos: Vector3) -> void:
     _solid_box(pos + Vector3(1.95, 1.6, 2.0), Vector3(2.1, 3.2, 0.3), wall)
     _solid_box(pos + Vector3(0, 2.9, 2.0), Vector3(1.8, 0.6, 0.3), wall)
     door = _solid_box(pos + Vector3(0, 1.3, 2.0), Vector3(1.8, 2.6, 0.2), _mat(Color(0.45, 0.2, 0.15)))
+    door_home = door.position
 
     var sign_label := Label3D.new()
     sign_label.text = "SAFE HOUSE"
@@ -102,21 +187,63 @@ func _build_shelter(pos: Vector3) -> void:
     lamp.light_energy = 1.4
     holder.add_child(lamp)
 
-    var beam := MeshInstance3D.new()
-    var cm := CylinderMesh.new()
-    cm.top_radius = 0.5
-    cm.bottom_radius = 0.5
-    cm.height = 60.0
-    cm.radial_segments = 12
-    var bmat := StandardMaterial3D.new()
-    bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-    bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-    bmat.albedo_color = Color(1.0, 0.85, 0.2, 0.28)
-    cm.material = bmat
-    beam.mesh = cm
-    beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-    beam.position = pos + Vector3(0, 30.0, 0)
-    holder.add_child(beam)
+    shelter_beam = _make_beam(Color(1.0, 0.85, 0.2, 0.28))
+    shelter_beam.position = pos + Vector3(0, 30.0, 0)
+
+
+# ------------------------------------------------------------ mission start / flow
+
+func start_mission(lv: int, new_world: bool) -> void:
+    level = lv
+    m = _make_mission(lv)
+    active = true
+    finished = false
+    step = 0
+    time_left = float(m["time"])
+    point_i = 0
+    points.clear()
+    show_arrow = false
+    refill_t = 3.0
+    end_menu.visible = false
+    action_btn.visible = false
+    if shelter_beam:
+        shelter_beam.visible = false
+    if point_beam:
+        point_beam.visible = false
+    if door:
+        door.position = door_home
+    var combat = main_node.get("combat")
+    need_combat = combat != null
+    var t := str(m["type"])
+    if new_world:
+        if need_combat and (t == "supply" or t == "hunt"):
+            combat.call("respawn", lines, rng.randi())
+        var sv = main_node.get("survival")
+        if sv and t == "supply":
+            sv.call("respawn", lines, rng.randi())
+    start_kills = int(combat.get("kills")) if need_combat else 0
+    match t:
+        "supply":
+            if shelter_beam:
+                shelter_beam.visible = true
+        "deliver", "race":
+            var player := main_node.get("player") as Node3D
+            var prev := player.global_position if player else Vector3.ZERO
+            var n: int = int(m["legs"]) + (1 if t == "deliver" else 0)
+            for i in n:
+                var p := _pick_point(prev, 50.0 if i == 0 else 70.0)
+                points.append(p)
+                prev = p
+            _set_target(points[0])
+    _toast("Mission %d: %s [%s]  Reward Rs %d" % [lv, str(m["title"]), str(m["tier_name"]), int(m["reward"])])
+
+
+func _set_target(p: Vector3) -> void:
+    target = p
+    show_arrow = true
+    if point_beam:
+        point_beam.position = p + Vector3(0, 30.0, 0)
+        point_beam.visible = true
 
 
 func _btn(text: String) -> Button:
@@ -154,6 +281,21 @@ func _build_ui() -> void:
     action_btn.pressed.connect(_on_action)
     root.add_child(action_btn)
 
+    start_btn = Button.new()
+    start_btn.text = "START MISSION"
+    start_btn.add_theme_font_size_override("font_size", 30)
+    start_btn.anchor_left = 0.0
+    start_btn.anchor_right = 0.0
+    start_btn.anchor_top = 0.0
+    start_btn.anchor_bottom = 0.0
+    start_btn.offset_left = 60.0
+    start_btn.offset_right = 420.0
+    start_btn.offset_top = 260.0
+    start_btn.offset_bottom = 345.0
+    start_btn.visible = false
+    start_btn.pressed.connect(_on_start)
+    root.add_child(start_btn)
+
     end_menu = Control.new()
     end_menu.visible = false
     root.add_child(end_menu)
@@ -182,13 +324,18 @@ func _build_ui() -> void:
     end_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     end_info.add_theme_font_size_override("font_size", 34)
     box.add_child(end_info)
-    continue_btn = _btn("Continue (free roam)")
-    continue_btn.pressed.connect(_on_continue)
-    box.add_child(continue_btn)
-    var again := _btn("Restart mission")
-    again.pressed.connect(_on_restart)
-    box.add_child(again)
+    next_btn = _btn("Next mission")
+    next_btn.pressed.connect(_on_next)
+    box.add_child(next_btn)
+    retry_btn = _btn("Retry mission")
+    retry_btn.pressed.connect(_on_retry)
+    box.add_child(retry_btn)
+    free_btn = _btn("Free roam")
+    free_btn.pressed.connect(_on_free)
+    box.add_child(free_btn)
 
+
+# ------------------------------------------------------------ helpers
 
 func _counts() -> Array:
     var sv = main_node.get("survival")
@@ -217,41 +364,116 @@ func _toast(msg: String) -> void:
         sv.call("_show_toast", msg)
 
 
+# Dushman kam par jayen to naye bana do (mission ke liye kaafi dushman hon)
+func _refill_enemies(remaining: int) -> void:
+    var c = main_node.get("combat")
+    if c == null or remaining <= 0:
+        return
+    if int(c.get("alive")) < mini(remaining, 4) and refill_t <= 0.0:
+        refill_t = 6.0
+        c.call("respawn", lines, rng.randi())
+        _toast("More enemies in the area")
+
+
 func _process(delta: float) -> void:
     if get_tree().paused:
         action_btn.visible = false
+        start_btn.visible = false
         return
     ui.queue_redraw()
-    if finished:
+    start_btn.visible = not active
+    if not active:
+        start_btn.text = "START MISSION %d" % _current_level()
         action_btn.visible = false
         return
+    refill_t = maxf(refill_t - delta, 0.0)
     time_left -= delta
     if time_left <= 0.0:
         _fail("Time ran out")
         return
+    match str(m["type"]):
+        "supply":
+            _tick_supply()
+        "hunt":
+            _tick_hunt()
+        _:
+            _tick_points()
+
+
+func _tick_supply() -> void:
     var counts: Array = _counts()
     match step:
         0:
-            if counts[0] >= NEED_WATER and counts[1] >= NEED_FOOD:
+            if counts[0] >= int(m["water"]) and counts[1] >= int(m["food"]):
                 step = 1 if need_combat else 2
                 _toast("Supplies collected")
+                if step == 2:
+                    _set_arrow_shelter()
         1:
-            if _kills() - start_kills >= KILL_GOAL:
+            var left: int = int(m["kills"]) - (_kills() - start_kills)
+            if left <= 0:
                 step = 2
                 _toast("Path is clear - head to the Safe House")
-    action_btn.visible = _dist_now() < DOOR_RANGE
+                _set_arrow_shelter()
+            else:
+                _refill_enemies(left)
+    action_btn.visible = _dist_now_shelter() < DOOR_RANGE and not finished
+
+
+func _set_arrow_shelter() -> void:
+    target = shelter_pos + Vector3(0, 0, 2.0)
+    show_arrow = true
+
+
+func _dist_now_shelter() -> float:
+    var player := main_node.get("player") as Node3D
+    if player == null:
+        return 999.0
+    return Vector2(player.global_position.x - shelter_pos.x, player.global_position.z - (shelter_pos.z + 2.0)).length()
+
+
+func _tick_hunt() -> void:
+    var left: int = int(m["kills"]) - (_kills() - start_kills)
+    if left <= 0:
+        _complete()
+    else:
+        _refill_enemies(left)
+
+
+func _tick_points() -> void:
+    if point_i >= points.size():
+        return
+    if _dist_now() < POINT_RANGE:
+        point_i += 1
+        if point_i >= points.size():
+            _complete()
+            return
+        if str(m["type"]) == "deliver":
+            _toast("Package picked up" if point_i == 1 else "Delivered. Next stop")
+        else:
+            _toast("Checkpoint %d/%d" % [point_i, points.size()])
+        _set_target(points[point_i])
 
 
 func _objective_text() -> String:
-    if finished:
-        return "Mission complete - free roam"
+    if not active:
+        return "Free roam"
     var counts: Array = _counts()
-    match step:
-        0:
-            return "Collect supplies: Water %d/%d   Food %d/%d" % [mini(counts[0], NEED_WATER), NEED_WATER, mini(counts[1], NEED_FOOD), NEED_FOOD]
-        1:
-            return "Eliminate enemies: %d/%d" % [mini(_kills() - start_kills, KILL_GOAL), KILL_GOAL]
-    return "Reach the Safe House: %d m" % int(_dist_now())
+    match str(m["type"]):
+        "supply":
+            match step:
+                0:
+                    return "Collect supplies: Water %d/%d   Food %d/%d" % [mini(counts[0], int(m["water"])), int(m["water"]), mini(counts[1], int(m["food"])), int(m["food"])]
+                1:
+                    return "Eliminate enemies: %d/%d" % [mini(_kills() - start_kills, int(m["kills"])), int(m["kills"])]
+            return "Reach the Safe House: %d m" % int(_dist_now())
+        "hunt":
+            return "Eliminate enemies: %d/%d" % [mini(_kills() - start_kills, int(m["kills"])), int(m["kills"])]
+        "deliver":
+            if point_i == 0:
+                return "Pick up the package: %d m  (use a vehicle)" % int(_dist_now())
+            return "Deliver (%d/%d): %d m" % [point_i, points.size() - 1, int(_dist_now())]
+    return "Checkpoint %d/%d: %d m" % [point_i + 1, points.size(), int(_dist_now())]
 
 
 func _draw_ui() -> void:
@@ -259,11 +481,12 @@ func _draw_ui() -> void:
         return
     var vp := get_viewport().get_visible_rect().size
     var font := ThemeDB.fallback_font
-    var t := int(maxf(time_left, 0.0))
-    var head := "MISSION 1: Safe House   %d:%02d" % [t / 60, t % 60]
-    ui.draw_string(font, Vector2(vp.x / 2.0 - 450, 300), head, HORIZONTAL_ALIGNMENT_CENTER, 900, 34, Color(1, 0.9, 0.4))
+    if active:
+        var t := int(maxf(time_left, 0.0))
+        var head := "MISSION %d [%s]: %s   %d:%02d" % [level, str(m["tier_name"]), str(m["title"]), t / 60, t % 60]
+        ui.draw_string(font, Vector2(vp.x / 2.0 - 450, 300), head, HORIZONTAL_ALIGNMENT_CENTER, 900, 34, Color(1, 0.9, 0.4))
     ui.draw_string(font, Vector2(vp.x / 2.0 - 450, 345), _objective_text(), HORIZONTAL_ALIGNMENT_CENTER, 900, 32)
-    if step == 2 and not finished:
+    if active and show_arrow and not finished:
         var cam := get_viewport().get_camera_3d()
         var player := main_node.get("player") as Node3D
         if cam and player:
@@ -280,54 +503,84 @@ func _draw_ui() -> void:
                 ui.draw_colored_polygon(pts, Color(1, 0.85, 0.2, 0.9))
 
 
+# ------------------------------------------------------------ buttons
+
 func _on_action() -> void:
-    if finished or door == null:
+    if finished or door == null or str(m["type"]) != "supply":
         return
     var counts: Array = _counts()
-    if counts[0] < NEED_WATER or counts[1] < NEED_FOOD:
-        _toast("Need %d water and %d food in your bag" % [NEED_WATER, NEED_FOOD])
+    if counts[0] < int(m["water"]) or counts[1] < int(m["food"]):
+        _toast("Need %d water and %d food in your bag" % [int(m["water"]), int(m["food"])])
         return
-    if need_combat and _kills() - start_kills < KILL_GOAL:
-        _toast("Eliminate %d enemies first" % KILL_GOAL)
+    if need_combat and _kills() - start_kills < int(m["kills"]):
+        _toast("Eliminate %d enemies first" % int(m["kills"]))
         return
-    counts[0] -= NEED_WATER
-    counts[1] -= NEED_FOOD
+    counts[0] -= int(m["water"])
+    counts[1] -= int(m["food"])
     var sv = main_node.get("survival")
     if sv:
         sv.call("_refresh_bag")
     var tw := create_tween()
     tw.tween_property(door, "position:x", door.position.x + 2.0, 0.8)
-    step = 3
     finished = true
     action_btn.visible = false
     get_tree().create_timer(1.2).timeout.connect(_complete)
 
 
 func _complete() -> void:
-    var used := int(TIME_LIMIT - time_left)
+    if not active:
+        return
+    active = false
+    finished = true
+    var used := int(float(m["time"]) - time_left)
+    var reward: int = int(m["reward"])
+    var e := _eco()
+    var lvl_next := level + 1
+    if e:
+        e.call("add_money", reward)
+        e.call("complete_level")
+        lvl_next = int(e.get("level"))
     end_title.text = "MISSION COMPLETE"
     end_title.add_theme_color_override("font_color", Color(0.4, 1.0, 0.5))
-    end_info.text = "Time %d:%02d   Enemies down: %d" % [used / 60, used % 60, _kills() - start_kills]
-    continue_btn.visible = true
+    var info := "Time %d:%02d   Reward: Rs %d" % [used / 60, used % 60, reward]
+    if str(m["type"]) in ["supply", "hunt"]:
+        info += "   Enemies down: %d" % (_kills() - start_kills)
+    end_info.text = info
+    next_btn.text = "Next mission (Level %d)" % lvl_next
+    next_btn.visible = true
+    retry_btn.visible = false
+    free_btn.visible = true
     end_menu.visible = true
     get_tree().paused = true
 
 
 func _fail(reason: String) -> void:
+    active = false
     finished = true
     end_title.text = "MISSION FAILED"
     end_title.add_theme_color_override("font_color", Color(1.0, 0.4, 0.4))
     end_info.text = reason
-    continue_btn.visible = false
+    next_btn.visible = false
+    retry_btn.visible = true
+    free_btn.visible = true
     end_menu.visible = true
     get_tree().paused = true
 
 
-func _on_continue() -> void:
+func _on_start() -> void:
+    start_mission(_current_level(), true)
+
+
+func _on_next() -> void:
+    get_tree().paused = false
+    start_mission(_current_level(), true)
+
+
+func _on_retry() -> void:
+    get_tree().paused = false
+    start_mission(level, true)
+
+
+func _on_free() -> void:
     end_menu.visible = false
     get_tree().paused = false
-
-
-func _on_restart() -> void:
-    get_tree().paused = false
-    get_tree().reload_current_scene()

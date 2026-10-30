@@ -18,6 +18,9 @@ var main_node: Node
 var ui: Control
 var holder: Node3D
 var ammo := MAG_SIZE
+var w_damage := DAMAGE
+var w_rate := FIRE_RATE
+var w_mag := MAG_SIZE
 var reload_left := 0.0
 var cooldown := 0.0
 var fire_touch := -1
@@ -89,6 +92,14 @@ func respawn(lines: Array, seed_v: int) -> void:
 func _on_enemy_died() -> void:
     kills += 1
     alive -= 1
+
+
+func set_weapon(dmg: float, rate: float, mag: int) -> void:
+    w_damage = dmg
+    w_rate = rate
+    w_mag = mag
+    ammo = mag
+    reload_left = 0.0
 
 
 func flash() -> void:
@@ -181,11 +192,11 @@ func _physics_process(delta: float) -> void:
     if reload_left > 0.0:
         reload_left -= delta
         if reload_left <= 0.0:
-            ammo = MAG_SIZE
+            ammo = w_mag
             snd_click.play()
     elif fire_touch != -1 and cooldown <= 0.0:
         _shoot()
-        cooldown = FIRE_RATE
+        cooldown = w_rate
         ammo -= 1
         if ammo <= 0:
             reload_left = RELOAD_TIME
@@ -227,7 +238,7 @@ func _shoot() -> void:
         var n: Vector3 = hit["normal"]
         if col and col.has_method("take_damage"):
             var head: bool = (end.y - col.global_position.y) >= HEAD_MIN_Y
-            var dmg := DAMAGE * (HEAD_MULT if head else 1.0)
+            var dmg := w_damage * (HEAD_MULT if head else 1.0)
             col.call("take_damage", dmg, end, dir, head)
             hit_t = 0.15
             if head:
