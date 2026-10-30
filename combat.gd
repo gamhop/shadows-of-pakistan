@@ -142,7 +142,6 @@ func _draw_ui() -> void:
         ui.draw_string(ThemeDB.fallback_font, fb + Vector2(-100, 16), "FIRE", HORIZONTAL_ALIGNMENT_CENTER, 200, 44)
         var ammo_text := "RELOADING" if reload_left > 0.0 else "AMMO " + str(ammo)
         ui.draw_string(ThemeDB.fallback_font, fb + Vector2(-140, -140), ammo_text, HORIZONTAL_ALIGNMENT_CENTER, 280, 36)
-    ui.draw_string(ThemeDB.fallback_font, Vector2(vp.x / 2.0 - 220, 130), "Kills: %d   Enemies: %d" % [kills, alive], HORIZONTAL_ALIGNMENT_CENTER, 440, 38)
     if flash_t > 0.0:
         ui.draw_rect(Rect2(Vector2.ZERO, vp), Color(0.8, 0.0, 0.0, flash_t))
 

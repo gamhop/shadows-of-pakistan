@@ -235,7 +235,7 @@ func start_mission(lv: int, new_world: bool) -> void:
                 points.append(p)
                 prev = p
             _set_target(points[0])
-    _toast("Mission %d: %s [%s]  Reward Rs %d" % [lv, str(m["title"]), str(m["tier_name"]), int(m["reward"])])
+    _toast("%s  +Rs %d" % [str(m["title"]), int(m["reward"])])
 
 
 func _set_target(p: Vector3) -> void:
@@ -372,7 +372,7 @@ func _refill_enemies(remaining: int) -> void:
     if int(c.get("alive")) < mini(remaining, 4) and refill_t <= 0.0:
         refill_t = 6.0
         c.call("respawn", lines, rng.randi())
-        _toast("More enemies in the area")
+        _toast("More enemies")
 
 
 func _process(delta: float) -> void:
@@ -413,7 +413,7 @@ func _tick_supply() -> void:
             var left: int = int(m["kills"]) - (_kills() - start_kills)
             if left <= 0:
                 step = 2
-                _toast("Path is clear - head to the Safe House")
+                _toast("Go to Safe House")
                 _set_arrow_shelter()
             else:
                 _refill_enemies(left)
@@ -456,37 +456,36 @@ func _tick_points() -> void:
 
 
 func _objective_text() -> String:
-    if not active:
-        return "Free roam"
     var counts: Array = _counts()
     match str(m["type"]):
         "supply":
             match step:
                 0:
-                    return "Collect supplies: Water %d/%d   Food %d/%d" % [mini(counts[0], int(m["water"])), int(m["water"]), mini(counts[1], int(m["food"])), int(m["food"])]
+                    return "Water %d/%d  Food %d/%d" % [mini(counts[0], int(m["water"])), int(m["water"]), mini(counts[1], int(m["food"])), int(m["food"])]
                 1:
-                    return "Eliminate enemies: %d/%d" % [mini(_kills() - start_kills, int(m["kills"])), int(m["kills"])]
-            return "Reach the Safe House: %d m" % int(_dist_now())
+                    return "Enemies %d/%d" % [mini(_kills() - start_kills, int(m["kills"])), int(m["kills"])]
+            return "Safe House %d m" % int(_dist_now())
         "hunt":
-            return "Eliminate enemies: %d/%d" % [mini(_kills() - start_kills, int(m["kills"])), int(m["kills"])]
+            return "Enemies %d/%d" % [mini(_kills() - start_kills, int(m["kills"])), int(m["kills"])]
         "deliver":
             if point_i == 0:
-                return "Pick up the package: %d m  (use a vehicle)" % int(_dist_now())
-            return "Deliver (%d/%d): %d m" % [point_i, points.size() - 1, int(_dist_now())]
-    return "Checkpoint %d/%d: %d m" % [point_i + 1, points.size(), int(_dist_now())]
+                return "Package %d m" % int(_dist_now())
+            return "Drop %d/%d  %d m" % [point_i, points.size() - 1, int(_dist_now())]
+    return "Checkpoint %d/%d  %d m" % [point_i + 1, points.size(), int(_dist_now())]
 
 
 func _draw_ui() -> void:
-    if get_tree().paused:
+    if get_tree().paused or not active:
         return
     var vp := get_viewport().get_visible_rect().size
     var font := ThemeDB.fallback_font
-    if active:
-        var t := int(maxf(time_left, 0.0))
-        var head := "MISSION %d [%s]: %s   %d:%02d" % [level, str(m["tier_name"]), str(m["title"]), t / 60, t % 60]
-        ui.draw_string(font, Vector2(vp.x / 2.0 - 450, 300), head, HORIZONTAL_ALIGNMENT_CENTER, 900, 34, Color(1, 0.9, 0.4))
-    ui.draw_string(font, Vector2(vp.x / 2.0 - 450, 345), _objective_text(), HORIZONTAL_ALIGNMENT_CENTER, 900, 32)
-    if active and show_arrow and not finished:
+    var t := int(maxf(time_left, 0.0))
+    var line := "%s  %d:%02d   |   %s" % [str(m["title"]), t / 60, t % 60, _objective_text()]
+    var sz := font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, 28)
+    var pos := Vector2(vp.x / 2.0 - sz.x / 2.0, 150.0)
+    ui.draw_rect(Rect2(pos.x - 16.0, pos.y - 34.0, sz.x + 32.0, 50.0), Color(0, 0, 0, 0.4))
+    ui.draw_string(font, pos, line, HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color(1, 0.92, 0.5))
+    if show_arrow and not finished:
         var cam := get_viewport().get_camera_3d()
         var player := main_node.get("player") as Node3D
         if cam and player:
@@ -496,9 +495,9 @@ func _draw_ui() -> void:
             to_t.y = 0.0
             if fwd.length() > 0.01 and to_t.length() > 0.5:
                 var ang := fwd.normalized().signed_angle_to(to_t.normalized(), Vector3.UP)
-                var c := Vector2(vp.x / 2.0, 440.0)
+                var c := Vector2(vp.x / 2.0, 250.0)
                 var pts := PackedVector2Array()
-                for p in [Vector2(0, -44), Vector2(28, 26), Vector2(0, 10), Vector2(-28, 26)]:
+                for p in [Vector2(0, -34), Vector2(22, 20), Vector2(0, 8), Vector2(-22, 20)]:
                     pts.append(c + p.rotated(-ang))
                 ui.draw_colored_polygon(pts, Color(1, 0.85, 0.2, 0.9))
 

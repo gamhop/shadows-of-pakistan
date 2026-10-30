@@ -110,6 +110,4 @@ func _process(delta: float) -> void:
 
 func _draw_ui() -> void:
     var font := ThemeDB.fallback_font
-    ui.draw_string(font, Vector2(660, 80), "Rs " + fmt(money) + "    LEVEL " + str(level), HORIZONTAL_ALIGNMENT_LEFT, 600, 36, Color(0.6, 1.0, 0.6))
-    if pop_t > 0.0:
-        ui.draw_string(font, Vector2(660, 124), pop_text, HORIZONTAL_ALIGNMENT_LEFT, 600, 34, Color(1.0, 0.9, 0.3, clampf(pop_t, 0.0, 1.0)))
+    ui.draw_string(font, Vector2(660, 74), "Rs " + fmt(money) + "  Lv " + str(level), HORIZONTAL_ALIGNMENT_LEFT, 500, 28, Color(0.6, 1.0, 0.6))

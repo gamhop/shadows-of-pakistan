@@ -4,6 +4,7 @@ extends Node3D
 # tangein hip ke ird-gird aur bazu kandhe ke ird-gird jhoolte hain.
 
 const MODEL_PATH := "res://assets/models/enemy_soldier.glb"
+const FLIP := true   # model ka munh ulta tha, true = 180 degree ghuma do
 
 const SHADER := """
 shader_type spatial;
@@ -85,6 +86,8 @@ func setup() -> bool:
     mat.shader = sh
     mat.set_shader_parameter("albedo_tex", src.albedo_texture)
     mi.material_override = mat
+    if FLIP:
+        inst.rotation.y = PI
     add_child(inst)
     return true
 
