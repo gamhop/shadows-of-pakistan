@@ -246,10 +246,10 @@ func _physics_process(delta: float) -> void:
 func _zones() -> Dictionary:
     var vp := get_viewport().get_visible_rect().size
     return {
-        "left": Rect2(50.0, vp.y - 350.0, 290.0, 300.0),
-        "right": Rect2(340.0, vp.y - 350.0, 290.0, 300.0),
-        "up": Rect2(vp.x - 400.0, vp.y - 400.0, 340.0, 350.0),
-        "down": Rect2(vp.x - 740.0, vp.y - 330.0, 310.0, 280.0),
+        "left": Rect2(50.0, vp.y - 310.0, 250.0, 260.0),
+        "right": Rect2(300.0, vp.y - 310.0, 250.0, 260.0),
+        "up": Rect2(vp.x - 340.0, vp.y - 330.0, 280.0, 280.0),
+        "down": Rect2(vp.x - 660.0, vp.y - 330.0, 280.0, 280.0),
     }
 
 
@@ -285,11 +285,6 @@ func _draw_pad() -> void:
         pad.draw_rect(r.grow(-5.0), col)
         var d: Vector2 = dirs[k]
         _arrow(r.get_center(), d, on)
-    var font := ThemeDB.fallback_font
-    var up_r: Rect2 = z["up"]
-    var dn_r: Rect2 = z["down"]
-    pad.draw_string(font, Vector2(up_r.position.x, up_r.position.y + 58.0), "GAS", HORIZONTAL_ALIGNMENT_CENTER, up_r.size.x, 40)
-    pad.draw_string(font, Vector2(dn_r.position.x, dn_r.position.y + 58.0), "BRAKE", HORIZONTAL_ALIGNMENT_CENTER, dn_r.size.x, 40)
 
 
 func _arrow(center: Vector2, dir: Vector2, pressed: bool) -> void:
