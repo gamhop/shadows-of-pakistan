@@ -11,6 +11,10 @@ const HALF := 105.0
 const PedScript := preload("res://ped.gd")
 
 const CAR_COLORS := [Color(0.9, 0.9, 0.9), Color(0.65, 0.66, 0.7), Color(0.08, 0.08, 0.1), Color(0.7, 0.12, 0.12), Color(0.15, 0.25, 0.6)]
+const VEHICLE_MODELS := {
+    "humvee": {"path": "res://assets/models/vehicle_humvee.glb", "scale": 1.0, "flip": false, "collider": Vector3(2.5, 2.2, 4.7)},
+    "truck": {"path": "res://assets/models/vehicle_truck.glb", "scale": 0.37, "flip": true, "collider": Vector3(4.0, 3.3, 7.5)},
+}
 const RICKSHAW_COLORS := [Color(0.95, 0.8, 0.1), Color(0.1, 0.5, 0.2), Color(0.15, 0.3, 0.7)]
 
 const SHADER := """
@@ -657,6 +661,37 @@ func _make_car(pos: Vector3, rot: float) -> void:
             _wheel(body, Vector3(sx, 0.31, sz), 0.31, 0.2)
 
 
+func _make_model_vehicle(key: String, pos: Vector3, rot: float) -> bool:
+    var info: Dictionary = VEHICLE_MODELS[key]
+    var path: String = info["path"]
+    if not ResourceLoader.exists(path):
+        return false
+    var scene := load(path) as PackedScene
+    if scene == null:
+        return false
+    var inst := scene.instantiate() as Node3D
+    if inst == null:
+        return false
+    var csize: Vector3 = info["collider"]
+    var body := _vehicle_body(pos, csize, rot)
+    var s: float = info["scale"]
+    inst.scale = Vector3.ONE * s
+    if info["flip"]:
+        inst.rotation.y = PI
+    body.add_child(inst)
+    _limit_view(inst, 90.0)
+    return true
+
+
+func _limit_view(n: Node, dist: float) -> void:
+    var g := n as GeometryInstance3D
+    if g:
+        g.visibility_range_end = dist
+        g.visibility_range_end_margin = 5.0
+    for ch in n.get_children():
+        _limit_view(ch, dist)
+
+
 func _make_rickshaw(pos: Vector3, rot: float) -> void:
     # Auto rickshaw: green body, yellow header, black hood. Front is -Z.
     var body := _vehicle_body(pos, Vector3(1.3, 2.0, 2.6), rot)
@@ -702,7 +737,9 @@ func _make_bike(pos: Vector3, rot: float) -> void:
 
 func _build_vehicles() -> void:
     var traffic: float = cfg["traffic"]
-    var offs := [3.8, 4.1, 4.4]
+    var offs := [3.8, 4.1, 4.4, 4.6, 5.3]
+    var humvees := 0
+    var trucks := 0
     for i in lines.size():
         var c: float = lines[i]
         for orient in 2:
@@ -711,6 +748,13 @@ func _build_vehicles() -> void:
                 if not _near_road(t):
                     var side := 1.0 if rng.randf() < 0.5 else -1.0
                     var kind := rng.randi() % 3
+                    var roll := rng.randf()
+                    if roll < 0.15 and humvees < 4:
+                        kind = 3
+                        humvees += 1
+                    elif roll > 0.93 and trucks < 1:
+                        kind = 4
+                        trucks += 1
                     var off: float = offs[kind] * side
                     var pos: Vector3
                     var rot := 0.0
@@ -726,6 +770,12 @@ func _build_vehicles() -> void:
                             _make_rickshaw(pos, rot)
                         2:
                             _make_bike(pos, rot)
+                        3:
+                            if not _make_model_vehicle("humvee", pos, rot):
+                                _make_car(pos, rot)
+                        4:
+                            if not _make_model_vehicle("truck", pos, rot):
+                                _make_car(pos, rot)
                 t += rng.randf_range(24.0, 42.0) / traffic
 
 
