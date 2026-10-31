@@ -39,4 +39,4 @@ func _refresh() -> void:
                 total += 1
                 if cache[k] != null:
                     ok += 1
-    label.text = "Build %s | wall/road textures: %d/%d" % [BuildInfo.BUILD, ok, total]
+    label.text = "Build %s | wall/road textures: %d/%d" % [BuildInfo.BUILD, ok, total] + " | " + str(Engine.get_meta("hero_status", "hero: ?"))
