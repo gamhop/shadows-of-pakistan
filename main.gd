@@ -12,6 +12,7 @@ const Cities := preload("res://cities.gd")
 const CityScript := preload("res://city.gd")
 const AvatarScript := preload("res://avatar.gd")
 const ModelAvatarScript := preload("res://model_avatar.gd")
+const HeroAvatarScript := preload("res://hero_avatar.gd")
 
 const SKY_SHADER := """
 shader_type sky;
@@ -273,8 +274,13 @@ func _make_player() -> void:
     player.position = Vector3(0, 0.1, 0)
     add_child(player)
 
-    var ma := ModelAvatarScript.new()
-    if ma.call("setup"):
+    var ma: Node3D = HeroAvatarScript.new()
+    var ok: bool = bool(ma.call("setup"))
+    if not ok:
+        ma.free()
+        ma = ModelAvatarScript.new()
+        ok = bool(ma.call("setup"))
+    if ok:
         avatar = ma
     else:
         ma.free()
